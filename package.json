@@ -10,6 +10,7 @@
     "@cpp.js/package-gdal": "^1.0.0",
     "@cpp.js/plugin-vite": "^1.0.2",
     "@cpp.js/sample-lib-prebuilt-matrix": "^1.0.0",
+    "jszip": "^3.10.1",
     "react": "^19.0.0",
     "react-dom": "^19.0.0"
   },
