@@ -1,5 +1,9 @@
 import { useState, useEffect } from 'react'
 import { Badge } from '@/components/badge'
+import { Button } from '@/components/button'
+import { Select } from '@/components/select'
+import { Input } from '@/components/input'
+import { Field, Label, Fieldset, FieldGroup } from '@/components/fieldset'
 import {
   InformationCircleIcon,
   ArrowPathIcon,
@@ -10,6 +14,7 @@ import { motion } from 'motion/react'
 import clsx from 'clsx'
 import JSZip from 'jszip'
 import { initCppJs, Native, VectorUint8 } from '@/native/native.h'
+import { Text } from '@/components/text'
 
 const SUPPORTED_FORMATS = [
   { value: 'geojson', label: 'GeoJSON', ext: '.geojson' },
@@ -20,12 +25,44 @@ const SUPPORTED_FORMATS = [
   { value: 'gml', label: 'GML', ext: '.gml' },
 ]
 
+// Common CRS options
+const COMMON_CRS = [
+  { value: '', label: 'No transformation' },
+  { value: 'EPSG:4326', label: 'WGS 84 (EPSG:4326) - GPS coordinates' },
+  { value: 'EPSG:3857', label: 'Web Mercator (EPSG:3857) - Web maps' },
+  { value: 'EPSG:32633', label: 'UTM Zone 33N (EPSG:32633)' },
+  { value: 'EPSG:32634', label: 'UTM Zone 34N (EPSG:32634)' },
+  { value: 'EPSG:2154', label: 'Lambert 93 (EPSG:2154) - France' },
+  { value: 'EPSG:27700', label: 'British National Grid (EPSG:27700)' },
+  { value: 'EPSG:5514', label: 'S-JTSK Krovak (EPSG:5514) - Czech' },
+  { value: 'custom', label: 'Custom CRS...' },
+]
+
+// Geometry type filter options
+const GEOMETRY_TYPE_FILTERS = [
+  { value: '', label: 'All geometry types' },
+  { value: 'Point', label: 'Points only' },
+  { value: 'LineString', label: 'Lines only' },
+  { value: 'Polygon', label: 'Polygons only' },
+  { value: 'MultiPoint', label: 'MultiPoints only' },
+  { value: 'MultiLineString', label: 'MultiLines only' },
+  { value: 'MultiPolygon', label: 'MultiPolygons only' },
+]
+
 function App() {
   const [gdalVersion, setGdalVersion] = useState('Initializing...')
   const [isLoading, setIsLoading] = useState(true)
   const [selectedFile, setSelectedFile] = useState(null)
   const [inputFormat, setInputFormat] = useState('geojson')
   const [outputFormat, setOutputFormat] = useState('shapefile')
+  const [formatAutoDetected, setFormatAutoDetected] = useState(false)
+  const [sourceCrs, setSourceCrs] = useState('')
+  const [targetCrs, setTargetCrs] = useState('')
+  const [customSourceCrs, setCustomSourceCrs] = useState('')
+  const [customTargetCrs, setCustomTargetCrs] = useState('')
+  const [layerName, setLayerName] = useState('')
+  const [geometryTypeFilter, setGeometryTypeFilter] = useState('')
+  const [showAdvanced, setShowAdvanced] = useState(false)
 
   useEffect(() => {
     initCppJs().then(() => {
@@ -34,10 +71,40 @@ function App() {
     });
   }, []);
 
+  const detectFormatFromFile = (filename) => {
+    const ext = filename.toLowerCase().split('.').pop()
+
+    // Map file extensions to formats
+    const extensionMap = {
+      'json': 'geojson',
+      'geojson': 'geojson',
+      'zip': 'shapefile',
+      'shp': 'shapefile',
+      'gpkg': 'geopackage',
+      'kml': 'kml',
+      'gpx': 'gpx',
+      'gml': 'gml',
+    }
+
+    return extensionMap[ext] || 'geojson' // Default to geojson
+  }
+
   const handleFileChange = (e) => {
     const file = e.target.files?.[0]
     if (file) {
       setSelectedFile(file)
+
+      // Auto-detect input format from file extension
+      const detectedFormat = detectFormatFromFile(file.name)
+      setInputFormat(detectedFormat)
+      setFormatAutoDetected(true)
+
+      // Smart output format suggestion: if converting from shapefile, suggest geojson, vice versa
+      if (detectedFormat === 'shapefile') {
+        setOutputFormat('geojson')
+      } else if (detectedFormat === 'geojson') {
+        setOutputFormat('shapefile')
+      }
     }
   }
 
@@ -77,8 +144,20 @@ function App() {
         inputVector.push_back(inputArray[i])
       }
 
+      // Get final CRS values (use custom if 'custom' is selected)
+      const finalSourceCrs = sourceCrs === 'custom' ? customSourceCrs : sourceCrs
+      const finalTargetCrs = targetCrs === 'custom' ? customTargetCrs : targetCrs
+
       // Convert using GDAL through WebAssembly
-      const outputVector = Native.convertVector(inputVector, actualInputFormat, outputFormat)
+      const outputVector = Native.convertVector(
+        inputVector,
+        actualInputFormat,
+        outputFormat,
+        finalSourceCrs,
+        finalTargetCrs,
+        layerName,
+        geometryTypeFilter
+      )
 
       if (!outputVector || outputVector.size() === 0) {
         inputVector.delete()
@@ -221,81 +300,199 @@ function App() {
             </div>
 
             {/* Format Selectors */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              {/* Input Format */}
-              <div className="space-y-3">
-                <label className="block text-sm font-medium text-zinc-300">
-                  Input Format
-                </label>
-                <select
-                  value={inputFormat}
-                  onChange={(e) => setInputFormat(e.target.value)}
-                  className={clsx(
-                    'w-full px-4 py-3 rounded-xl',
-                    'bg-zinc-900 border border-zinc-700',
-                    'text-zinc-100 text-sm',
-                    'focus:outline-none focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500',
-                    'transition-all duration-200'
-                  )}
-                >
-                  {SUPPORTED_FORMATS.map((format) => (
-                    <option key={format.value} value={format.value}>
-                      {format.label}
-                    </option>
-                  ))}
-                </select>
-              </div>
+            <FieldGroup>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                {/* Input Format */}
+                <Field>
+                  <Label>
+                    Input Format
+                    {formatAutoDetected && (
+                      <span className="ml-2 text-xs text-emerald-400 font-normal">
+                        (auto-detected)
+                      </span>
+                    )}
+                  </Label>
+                  <Select
+                    value={inputFormat}
+                    onChange={(e) => {
+                      setInputFormat(e.target.value)
+                      setFormatAutoDetected(false)
+                    }}
+                    className={formatAutoDetected ? 'ring-2 ring-emerald-500/30' : ''}
+                  >
+                    {SUPPORTED_FORMATS.map((format) => (
+                      <option key={format.value} value={format.value}>
+                        {format.label}
+                      </option>
+                    ))}
+                  </Select>
+                </Field>
 
-              {/* Output Format */}
-              <div className="space-y-3">
-                <label className="block text-sm font-medium text-zinc-300">
-                  Output Format
-                </label>
-                <select
-                  value={outputFormat}
-                  onChange={(e) => setOutputFormat(e.target.value)}
-                  className={clsx(
-                    'w-full px-4 py-3 rounded-xl',
-                    'bg-zinc-900 border border-zinc-700',
-                    'text-zinc-100 text-sm',
-                    'focus:outline-none focus:ring-2 focus:ring-emerald-500/50 focus:border-emerald-500',
-                    'transition-all duration-200'
-                  )}
-                >
-                  {SUPPORTED_FORMATS.map((format) => (
-                    <option key={format.value} value={format.value}>
-                      {format.label}
-                    </option>
-                  ))}
-                </select>
+                {/* Output Format */}
+                <Field>
+                  <Label>Output Format</Label>
+                  <Select
+                    value={outputFormat}
+                    onChange={(e) => setOutputFormat(e.target.value)}
+                  >
+                    {SUPPORTED_FORMATS.map((format) => (
+                      <option key={format.value} value={format.value}>
+                        {format.label}
+                      </option>
+                    ))}
+                  </Select>
+                </Field>
               </div>
-            </div>
+            </FieldGroup>
+
+            {/* Advanced Options Toggle */}
+            <button
+              type="button"
+              onClick={() => setShowAdvanced(!showAdvanced)}
+              className="flex items-center gap-2 text-sm text-zinc-400 hover:text-zinc-300 transition-colors"
+            >
+              <span>{showAdvanced ? '▼' : '▶'}</span>
+              <span>Advanced Options (CRS Transformation)</span>
+            </button>
+
+            {/* Advanced Options - Collapsible */}
+            {showAdvanced && (
+              <Fieldset className="p-4 bg-zinc-900/30 rounded-xl border border-zinc-800/50 space-y-6">
+                {/* CRS Transformation Section */}
+                <div className="space-y-4">
+                  <Text className="font-medium text-zinc-300">
+                    Coordinate Reference System (CRS) Transformation
+                  </Text>
+                  <Text className="text-sm text-zinc-500">
+                    Reproject coordinates between different coordinate systems
+                  </Text>
+
+                  <FieldGroup>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                      {/* Source CRS */}
+                      <Field>
+                        <Label>Source CRS</Label>
+                        <Select
+                          value={sourceCrs}
+                          onChange={(e) => setSourceCrs(e.target.value)}
+                        >
+                          {COMMON_CRS.map((crs) => (
+                            <option key={crs.value} value={crs.value}>
+                              {crs.label}
+                            </option>
+                          ))}
+                        </Select>
+                        {sourceCrs === 'custom' && (
+                          <Input
+                            type="text"
+                            value={customSourceCrs}
+                            onChange={(e) => setCustomSourceCrs(e.target.value)}
+                            placeholder="e.g., EPSG:4326 or +proj=longlat..."
+                            className="mt-2"
+                          />
+                        )}
+                        <Text className="text-xs text-zinc-500 mt-2">
+                          The CRS of your input data
+                        </Text>
+                      </Field>
+
+                      {/* Target CRS */}
+                      <Field>
+                        <Label>Target CRS</Label>
+                        <Select
+                          value={targetCrs}
+                          onChange={(e) => setTargetCrs(e.target.value)}
+                        >
+                          {COMMON_CRS.map((crs) => (
+                            <option key={crs.value} value={crs.value}>
+                              {crs.label}
+                            </option>
+                          ))}
+                        </Select>
+                        {targetCrs === 'custom' && (
+                          <Input
+                            type="text"
+                            value={customTargetCrs}
+                            onChange={(e) => setCustomTargetCrs(e.target.value)}
+                            placeholder="e.g., EPSG:3857 or +proj=merc..."
+                            className="mt-2"
+                          />
+                        )}
+                        <Text className="text-xs text-zinc-500 mt-2">
+                          The desired output CRS
+                        </Text>
+                      </Field>
+                    </div>
+                  </FieldGroup>
+                </div>
+
+                {/* Filtering Options */}
+                <div className="space-y-4 pt-4 border-t border-zinc-800">
+                  <Text className="font-medium text-zinc-300">
+                    Data Filtering
+                  </Text>
+                  <Text className="text-sm text-zinc-500">
+                    Filter and customize the output data
+                  </Text>
+
+                  <FieldGroup>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                      {/* Layer Name */}
+                      <Field>
+                        <Label>Layer Name (optional)</Label>
+                        <Input
+                          type="text"
+                          value={layerName}
+                          onChange={(e) => setLayerName(e.target.value)}
+                          placeholder="e.g., my_layer"
+                        />
+                        <Text className="text-xs text-zinc-500 mt-2">
+                          Custom name for the output layer
+                        </Text>
+                      </Field>
+
+                      {/* Geometry Type Filter */}
+                      <Field>
+                        <Label>Geometry Type Filter</Label>
+                        <Select
+                          value={geometryTypeFilter}
+                          onChange={(e) => setGeometryTypeFilter(e.target.value)}
+                        >
+                          {GEOMETRY_TYPE_FILTERS.map((type) => (
+                            <option key={type.value} value={type.value}>
+                              {type.label}
+                            </option>
+                          ))}
+                        </Select>
+                        <Text className="text-xs text-zinc-500 mt-2">
+                          Only include specific geometry types
+                        </Text>
+                      </Field>
+                    </div>
+                  </FieldGroup>
+                </div>
+              </Fieldset>
+            )}
 
             {/* Convert Button */}
-            <button
+            <Button
+              color="emerald"
               onClick={handleConvert}
               disabled={!selectedFile || isLoading}
-              className={clsx(
-                'w-full flex items-center justify-center gap-3 px-6 py-4 rounded-xl',
-                'font-medium text-base transition-all duration-200',
-                'focus:outline-none focus:ring-2 focus:ring-emerald-500/50 focus:ring-offset-2 focus:ring-offset-zinc-900',
-                selectedFile && !isLoading
-                  ? 'bg-emerald-600 hover:bg-emerald-500 text-white shadow-lg shadow-emerald-500/20'
-                  : 'bg-zinc-800 text-zinc-500 cursor-not-allowed'
-              )}
+              className="w-full"
             >
               {isLoading ? (
                 <>
-                  <ArrowPathIcon className="w-5 h-5 animate-spin" />
+                  <ArrowPathIcon data-slot="icon" className="animate-spin" />
                   <span>Initializing...</span>
                 </>
               ) : (
                 <>
-                  <ArrowDownTrayIcon className="w-5 h-5" />
+                  <ArrowDownTrayIcon data-slot="icon" />
                   <span>Convert & Download</span>
                 </>
               )}
-            </button>
+            </Button>
           </motion.div>
 
           {/* Info Footer */}

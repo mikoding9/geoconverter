@@ -3,7 +3,10 @@
 #include <gdal_priv.h>
 #include <ogr_api.h>
 #include <ogrsf_frmts.h>
+#include <ogr_spatialref.h>
 #include <cpl_vsi.h>
+#include <cpl_string.h>
+#include <gdalwarper.h>
 #include <sstream>
 
 std::string Native::getGdalInfo() {
@@ -41,7 +44,11 @@ std::string getExtensionFromFormat(const std::string& format) {
 std::vector<uint8_t> Native::convertVector(
     const std::vector<uint8_t>& inputData,
     const std::string& inputFormat,
-    const std::string& outputFormat
+    const std::string& outputFormat,
+    const std::string& sourceCrs,
+    const std::string& targetCrs,
+    const std::string& layerName,
+    const std::string& geometryTypeFilter
 ) {
     GDALAllRegister();
 
@@ -119,15 +126,226 @@ std::vector<uint8_t> Native::convertVector(
         std::string outputExt = getExtensionFromFormat(outputFormat);
         std::string outputPath = "/vsimem/output" + outputExt;
 
-        // Use CreateCopy for conversion
-        GDALDataset* poDstDS = poDriver->CreateCopy(
-            outputPath.c_str(),
-            poSrcDS,
-            FALSE,
-            nullptr,
-            nullptr,
-            nullptr
-        );
+        // Handle CRS reprojection for vector data
+        GDALDataset* poDstDS = nullptr;
+
+        // Check if we need to perform CRS transformation
+        bool needsTransformation = !sourceCrs.empty() && !targetCrs.empty() && sourceCrs != targetCrs;
+
+        if (needsTransformation) {
+            // Create coordinate transformation
+            OGRSpatialReference oSourceSRS, oTargetSRS;
+            OGRErr errSource = oSourceSRS.SetFromUserInput(sourceCrs.c_str());
+            OGRErr errTarget = oTargetSRS.SetFromUserInput(targetCrs.c_str());
+
+            if (errSource != OGRERR_NONE || errTarget != OGRERR_NONE) {
+                GDALClose(poSrcDS);
+                if (inputFormat == "shapefile") {
+                    VSIUnlink("/vsimem/input.zip");
+                } else {
+                    VSIUnlink(inputPath.c_str());
+                }
+                throw std::runtime_error("Failed to parse CRS definitions");
+            }
+
+            OGRCoordinateTransformation* poCT = OGRCreateCoordinateTransformation(&oSourceSRS, &oTargetSRS);
+            if (poCT == nullptr) {
+                GDALClose(poSrcDS);
+                if (inputFormat == "shapefile") {
+                    VSIUnlink("/vsimem/input.zip");
+                } else {
+                    VSIUnlink(inputPath.c_str());
+                }
+                throw std::runtime_error("Failed to create coordinate transformation");
+            }
+
+            // Create output dataset
+            poDstDS = poDriver->Create(
+                outputPath.c_str(),
+                0, 0, 0,
+                GDT_Unknown,
+                nullptr
+            );
+
+            if (poDstDS == nullptr) {
+                OGRCoordinateTransformation::DestroyCT(poCT);
+                GDALClose(poSrcDS);
+                if (inputFormat == "shapefile") {
+                    VSIUnlink("/vsimem/input.zip");
+                } else {
+                    VSIUnlink(inputPath.c_str());
+                }
+                throw std::runtime_error("Failed to create output dataset");
+            }
+
+            // Process each layer
+            int layerCount = poSrcDS->GetLayerCount();
+            for (int i = 0; i < layerCount; i++) {
+                OGRLayer* poSrcLayer = poSrcDS->GetLayer(i);
+                if (poSrcLayer == nullptr) continue;
+
+                // Determine output layer name
+                std::string outputLayerName = layerName.empty() ? poSrcLayer->GetName() : layerName;
+
+                // Create output layer with target CRS
+                OGRLayer* poDstLayer = poDstDS->CreateLayer(
+                    outputLayerName.c_str(),
+                    &oTargetSRS,
+                    poSrcLayer->GetGeomType(),
+                    nullptr
+                );
+
+                if (poDstLayer == nullptr) continue;
+
+                // Copy layer definition (fields)
+                OGRFeatureDefn* poSrcFDefn = poSrcLayer->GetLayerDefn();
+                for (int iField = 0; iField < poSrcFDefn->GetFieldCount(); iField++) {
+                    OGRFieldDefn* poFieldDefn = poSrcFDefn->GetFieldDefn(iField);
+                    poDstLayer->CreateField(poFieldDefn);
+                }
+
+                // Copy and transform features
+                poSrcLayer->ResetReading();
+                OGRFeature* poFeature;
+                while ((poFeature = poSrcLayer->GetNextFeature()) != nullptr) {
+                    OGRGeometry* poGeometry = poFeature->GetGeometryRef();
+
+                    // Apply geometry type filter if specified
+                    if (!geometryTypeFilter.empty() && poGeometry != nullptr) {
+                        std::string geomTypeName = OGRGeometryTypeToName(poGeometry->getGeometryType());
+                        if (geomTypeName.find(geometryTypeFilter) == std::string::npos) {
+                            OGRFeature::DestroyFeature(poFeature);
+                            continue; // Skip features that don't match the geometry type filter
+                        }
+                    }
+
+                    if (poGeometry != nullptr) {
+                        OGRErr err = poGeometry->transform(poCT);
+                        if (err != OGRERR_NONE) {
+                            OGRFeature::DestroyFeature(poFeature);
+                            continue; // Skip features that fail to transform
+                        }
+                    }
+
+                    // Create new feature in output layer
+                    OGRFeature* poDstFeature = OGRFeature::CreateFeature(poDstLayer->GetLayerDefn());
+                    poDstFeature->SetFrom(poFeature);
+
+                    if (poDstLayer->CreateFeature(poDstFeature) != OGRERR_NONE) {
+                        OGRFeature::DestroyFeature(poDstFeature);
+                        OGRFeature::DestroyFeature(poFeature);
+                        continue;
+                    }
+
+                    OGRFeature::DestroyFeature(poDstFeature);
+                    OGRFeature::DestroyFeature(poFeature);
+                }
+            }
+
+            OGRCoordinateTransformation::DestroyCT(poCT);
+
+        } else {
+            // No transformation needed, but check if we need filtering or layer name changes
+            bool needsCustomProcessing = !layerName.empty() || !geometryTypeFilter.empty();
+
+            if (needsCustomProcessing) {
+                // Need to process layer by layer for filtering or renaming
+                poDstDS = poDriver->Create(
+                    outputPath.c_str(),
+                    0, 0, 0,
+                    GDT_Unknown,
+                    nullptr
+                );
+
+                if (poDstDS == nullptr) {
+                    GDALClose(poSrcDS);
+                    if (inputFormat == "shapefile") {
+                        VSIUnlink("/vsimem/input.zip");
+                    } else {
+                        VSIUnlink(inputPath.c_str());
+                    }
+                    throw std::runtime_error("Failed to create output dataset");
+                }
+
+                // Process each layer
+                int layerCount = poSrcDS->GetLayerCount();
+                for (int i = 0; i < layerCount; i++) {
+                    OGRLayer* poSrcLayer = poSrcDS->GetLayer(i);
+                    if (poSrcLayer == nullptr) continue;
+
+                    // Determine output layer name
+                    std::string outputLayerName = layerName.empty() ? poSrcLayer->GetName() : layerName;
+
+                    // Get source spatial reference
+                    OGRSpatialReference* poSrcSRS = poSrcLayer->GetSpatialRef();
+
+                    // Create output layer
+                    OGRLayer* poDstLayer = poDstDS->CreateLayer(
+                        outputLayerName.c_str(),
+                        poSrcSRS,
+                        poSrcLayer->GetGeomType(),
+                        nullptr
+                    );
+
+                    if (poDstLayer == nullptr) continue;
+
+                    // Copy layer definition (fields)
+                    OGRFeatureDefn* poSrcFDefn = poSrcLayer->GetLayerDefn();
+                    for (int iField = 0; iField < poSrcFDefn->GetFieldCount(); iField++) {
+                        OGRFieldDefn* poFieldDefn = poSrcFDefn->GetFieldDefn(iField);
+                        poDstLayer->CreateField(poFieldDefn);
+                    }
+
+                    // Copy features with optional filtering
+                    poSrcLayer->ResetReading();
+                    OGRFeature* poFeature;
+                    while ((poFeature = poSrcLayer->GetNextFeature()) != nullptr) {
+                        OGRGeometry* poGeometry = poFeature->GetGeometryRef();
+
+                        // Apply geometry type filter if specified
+                        if (!geometryTypeFilter.empty() && poGeometry != nullptr) {
+                            std::string geomTypeName = OGRGeometryTypeToName(poGeometry->getGeometryType());
+                            if (geomTypeName.find(geometryTypeFilter) == std::string::npos) {
+                                OGRFeature::DestroyFeature(poFeature);
+                                continue;
+                            }
+                        }
+
+                        // Create new feature in output layer
+                        OGRFeature* poDstFeature = OGRFeature::CreateFeature(poDstLayer->GetLayerDefn());
+                        poDstFeature->SetFrom(poFeature);
+
+                        if (poDstLayer->CreateFeature(poDstFeature) != OGRERR_NONE) {
+                            OGRFeature::DestroyFeature(poDstFeature);
+                            OGRFeature::DestroyFeature(poFeature);
+                            continue;
+                        }
+
+                        OGRFeature::DestroyFeature(poDstFeature);
+                        OGRFeature::DestroyFeature(poFeature);
+                    }
+                }
+            } else {
+                // Simple copy, no filtering or custom processing needed
+                char** papszOptions = nullptr;
+
+                // If target CRS is specified but no transformation needed, set it on output
+                if (!targetCrs.empty()) {
+                    papszOptions = CSLSetNameValue(papszOptions, "TARGET_SRS", targetCrs.c_str());
+                }
+
+                poDstDS = poDriver->CreateCopy(
+                    outputPath.c_str(),
+                    poSrcDS,
+                    FALSE,
+                    papszOptions,
+                    nullptr,
+                    nullptr
+                );
+
+                CSLDestroy(papszOptions);
+            }
+        }
 
         if (poDstDS == nullptr) {
             GDALClose(poSrcDS);
