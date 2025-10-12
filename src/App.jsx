@@ -14,10 +14,10 @@ import { initCppJs, Native, VectorUint8 } from '@/native/native.h'
 const SUPPORTED_FORMATS = [
   { value: 'geojson', label: 'GeoJSON', ext: '.geojson' },
   { value: 'shapefile', label: 'Shapefile (ZIP)', ext: '.zip' },
+  { value: 'geopackage', label: 'GeoPackage', ext: '.gpkg' },
   { value: 'kml', label: 'KML', ext: '.kml' },
   { value: 'gpx', label: 'GPX', ext: '.gpx' },
   { value: 'gml', label: 'GML', ext: '.gml' },
-  { value: 'csv', label: 'CSV', ext: '.csv' },
 ]
 
 function App() {
@@ -208,7 +208,7 @@ function App() {
                   onChange={handleFileChange}
                   className="hidden"
                   id="file-upload"
-                  accept=".json,.geojson,.zip,.kml,.gpx,.gml,.csv"
+                  accept=".json,.geojson,.zip,.gpkg,.kml,.gpx,.gml"
                 />
                 <label
                   htmlFor="file-upload"
@@ -229,7 +229,7 @@ function App() {
                     <p className="text-sm text-zinc-500 mt-1">
                       {selectedFile
                         ? `${(selectedFile.size / 1024).toFixed(2)} KB`
-                        : 'Supports GeoJSON, Shapefile (ZIP), KML, GPX, GML, CSV'}
+                        : 'Supports GeoJSON, Shapefile (ZIP), GeoPackage, KML, GPX, GML'}
                     </p>
                   </div>
                 </label>

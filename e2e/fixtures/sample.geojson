@@ -1,0 +1,50 @@
+{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Sample Point",
+        "description": "This is a test point"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [106.8456, -6.2088]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Sample Line",
+        "description": "This is a test line"
+      },
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [106.8456, -6.2088],
+          [106.8556, -6.2188],
+          [106.8656, -6.2288]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "name": "Sample Polygon",
+        "description": "This is a test polygon"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [106.8456, -6.2088],
+            [106.8556, -6.2088],
+            [106.8556, -6.2188],
+            [106.8456, -6.2188],
+            [106.8456, -6.2088]
+          ]
+        ]
+      }
+    }
+  ]
+}

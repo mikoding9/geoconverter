@@ -21,20 +21,20 @@ std::string Native::getGdalInfo() {
 std::string getDriverNameFromFormat(const std::string& format) {
     if (format == "geojson") return "GeoJSON";
     if (format == "shapefile") return "ESRI Shapefile";
+    if (format == "geopackage") return "GPKG";
     if (format == "kml") return "KML";
     if (format == "gpx") return "GPX";
     if (format == "gml") return "GML";
-    if (format == "csv") return "CSV";
     return "GeoJSON"; // default
 }
 
 std::string getExtensionFromFormat(const std::string& format) {
     if (format == "geojson") return ".geojson";
     if (format == "shapefile") return ".shp";
+    if (format == "geopackage") return ".gpkg";
     if (format == "kml") return ".kml";
     if (format == "gpx") return ".gpx";
     if (format == "gml") return ".gml";
-    if (format == "csv") return ".csv";
     return ".geojson"; // default
 }
 
