@@ -143,29 +143,74 @@ std::vector<uint8_t> Native::convertVector(
         GDALClose(poDstDS);
         GDALClose(poSrcDS);
 
-        // Read output data from virtual file system
-        vsi_l_offset nLength = 0;
-        GByte* pabyData = VSIGetMemFileBuffer(outputPath.c_str(), &nLength, FALSE);
+        // For shapefile output, we need to ZIP all the related files
+        if (outputFormat == "shapefile") {
+            // Create a ZIP file in memory containing all shapefile components
+            std::string zipPath = "/vsimem/output.zip";
+            std::string zipVsiPath = "/vsizip/" + zipPath;
 
-        if (pabyData != nullptr && nLength > 0) {
-            result.assign(pabyData, pabyData + nLength);
-        } else {
-            if (inputFormat == "shapefile") {
-                VSIUnlink("/vsimem/input.zip");
-            } else {
-                VSIUnlink(inputPath.c_str());
+            // Common shapefile extensions
+            const char* extensions[] = {".shp", ".shx", ".dbf", ".prj", ".cpg"};
+            std::string baseName = "/vsimem/output";
+
+            // Copy each shapefile component into the ZIP
+            for (const char* ext : extensions) {
+                std::string srcFile = baseName + ext;
+                vsi_l_offset fileLength = 0;
+                GByte* fileData = VSIGetMemFileBuffer(srcFile.c_str(), &fileLength, FALSE);
+
+                if (fileData != nullptr && fileLength > 0) {
+                    // Write to ZIP
+                    std::string zipEntryPath = zipVsiPath + "/output" + ext;
+                    VSILFILE* fpZipEntry = VSIFOpenL(zipEntryPath.c_str(), "wb");
+                    if (fpZipEntry) {
+                        VSIFWriteL(fileData, 1, fileLength, fpZipEntry);
+                        VSIFCloseL(fpZipEntry);
+                    }
+                }
+
+                // Clean up individual file
+                VSIUnlink(srcFile.c_str());
             }
+
+            // Read the ZIP file
+            vsi_l_offset zipLength = 0;
+            GByte* zipData = VSIGetMemFileBuffer(zipPath.c_str(), &zipLength, FALSE);
+
+            if (zipData != nullptr && zipLength > 0) {
+                result.assign(zipData, zipData + zipLength);
+            } else {
+                throw std::runtime_error("Failed to create shapefile ZIP");
+            }
+
+            VSIUnlink(zipPath.c_str());
+
+        } else {
+            // For other formats, read single file
+            vsi_l_offset nLength = 0;
+            GByte* pabyData = VSIGetMemFileBuffer(outputPath.c_str(), &nLength, FALSE);
+
+            if (pabyData != nullptr && nLength > 0) {
+                result.assign(pabyData, pabyData + nLength);
+            } else {
+                if (inputFormat == "shapefile") {
+                    VSIUnlink("/vsimem/input.zip");
+                } else {
+                    VSIUnlink(inputPath.c_str());
+                }
+                VSIUnlink(outputPath.c_str());
+                throw std::runtime_error("Failed to read output data");
+            }
+
             VSIUnlink(outputPath.c_str());
-            throw std::runtime_error("Failed to read output data");
         }
 
-        // Clean up virtual files
+        // Clean up input files
         if (inputFormat == "shapefile") {
             VSIUnlink("/vsimem/input.zip");
         } else {
             VSIUnlink(inputPath.c_str());
         }
-        VSIUnlink(outputPath.c_str());
 
     } catch (const std::exception& e) {
         // Return empty vector on error

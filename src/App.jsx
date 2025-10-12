@@ -97,32 +97,16 @@ function App() {
       inputVector.delete()
       outputVector.delete()
 
-      // Handle ZIP for shapefile output
-      let finalBlob
-      let finalExtension
+      // Create blob for download
       const baseName = selectedFile.name.replace(/\.[^/.]+$/, '')
-
-      if (outputFormat === 'shapefile') {
-        // Shapefile output needs to be zipped
-        // For now, assume GDAL returns a single file that we need to zip
-        // In reality, GDAL creates multiple files for shapefiles
-        const zip = new JSZip()
-        zip.file(`${baseName}.shp`, outputArray)
-
-        const zipBlob = await zip.generateAsync({ type: 'blob' })
-        finalBlob = zipBlob
-        finalExtension = '.zip'
-      } else {
-        // Other formats
-        finalBlob = new Blob([outputArray], { type: 'application/octet-stream' })
-        finalExtension = SUPPORTED_FORMATS.find(f => f.value === outputFormat)?.ext || '.dat'
-      }
+      const outputBlob = new Blob([outputArray], { type: 'application/octet-stream' })
+      const outputExt = SUPPORTED_FORMATS.find(f => f.value === outputFormat)?.ext || '.dat'
 
       // Trigger download
-      const url = URL.createObjectURL(finalBlob)
+      const url = URL.createObjectURL(outputBlob)
       const a = document.createElement('a')
       a.href = url
-      a.download = `${baseName}${finalExtension}`
+      a.download = `${baseName}${outputExt}`
 
       document.body.appendChild(a)
       a.click()
