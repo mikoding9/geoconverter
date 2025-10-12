@@ -15,7 +15,17 @@ public:
         const std::string& sourceCrs,
         const std::string& targetCrs,
         const std::string& layerName,
-        const std::string& geometryTypeFilter
+        const std::string& geometryTypeFilter,
+        bool skipFailures,
+        bool makeValid,
+        bool keepZ,
+        const std::string& whereClause,
+        const std::string& selectFields,
+        double simplifyTolerance,
+        bool explodeCollections,
+        bool preserveFid,
+        int geojsonPrecision,
+        const std::string& csvGeometryMode
     );
 };
 

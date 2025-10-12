@@ -4,6 +4,7 @@ import { Button } from '@/components/button'
 import { Select } from '@/components/select'
 import { Input } from '@/components/input'
 import { Field, Label, Fieldset, FieldGroup } from '@/components/fieldset'
+import { Switch } from '@/components/switch'
 import {
   InformationCircleIcon,
   ArrowPathIcon,
@@ -23,6 +24,9 @@ const SUPPORTED_FORMATS = [
   { value: 'kml', label: 'KML', ext: '.kml' },
   { value: 'gpx', label: 'GPX', ext: '.gpx' },
   { value: 'gml', label: 'GML', ext: '.gml' },
+  { value: 'flatgeobuf', label: 'FlatGeobuf', ext: '.fgb' },
+  { value: 'csv', label: 'CSV', ext: '.csv' },
+  { value: 'parquet', label: 'Parquet', ext: '.parquet' },
 ]
 
 // Common CRS options
@@ -64,6 +68,20 @@ function App() {
   const [geometryTypeFilter, setGeometryTypeFilter] = useState('')
   const [showAdvanced, setShowAdvanced] = useState(false)
 
+  // New advanced options
+  const [skipFailures, setSkipFailures] = useState(false)
+  const [makeValid, setMakeValid] = useState(false)
+  const [keepZ, setKeepZ] = useState(false)
+  const [whereClause, setWhereClause] = useState('')
+  const [selectFields, setSelectFields] = useState('')
+  const [simplifyTolerance, setSimplifyTolerance] = useState(0)
+  const [explodeCollections, setExplodeCollections] = useState(true) // Default ON
+  const [preserveFid, setPreserveFid] = useState(false)
+
+  // Format-specific options
+  const [geojsonPrecision, setGeojsonPrecision] = useState(7)
+  const [csvGeometryMode, setCsvGeometryMode] = useState('WKT') // WKT or XY
+
   useEffect(() => {
     initCppJs().then(() => {
       setGdalVersion(Native.getGdalInfo());
@@ -84,6 +102,9 @@ function App() {
       'kml': 'kml',
       'gpx': 'gpx',
       'gml': 'gml',
+      'fgb': 'flatgeobuf',
+      'csv': 'csv',
+      'parquet': 'parquet',
     }
 
     return extensionMap[ext] || 'geojson' // Default to geojson
@@ -156,7 +177,17 @@ function App() {
         finalSourceCrs,
         finalTargetCrs,
         layerName,
-        geometryTypeFilter
+        geometryTypeFilter,
+        skipFailures,
+        makeValid,
+        keepZ,
+        whereClause,
+        selectFields,
+        simplifyTolerance,
+        explodeCollections,
+        preserveFid,
+        geojsonPrecision,
+        csvGeometryMode
       )
 
       if (!outputVector || outputVector.size() === 0) {
@@ -271,7 +302,7 @@ function App() {
                   onChange={handleFileChange}
                   className="hidden"
                   id="file-upload"
-                  accept=".json,.geojson,.zip,.gpkg,.kml,.gpx,.gml"
+                  accept=".json,.geojson,.zip,.gpkg,.kml,.gpx,.gml,.fgb,.csv,.parquet"
                 />
                 <label
                   htmlFor="file-upload"
@@ -292,7 +323,7 @@ function App() {
                     <p className="text-sm text-zinc-500 mt-1">
                       {selectedFile
                         ? `${(selectedFile.size / 1024).toFixed(2)} KB`
-                        : 'Supports GeoJSON, Shapefile (ZIP), GeoPackage, KML, GPX, GML'}
+                        : 'Supports GeoJSON, Shapefile, GeoPackage, KML, GPX, GML, FlatGeobuf, CSV, Parquet'}
                     </p>
                   </div>
                 </label>
@@ -352,7 +383,7 @@ function App() {
               className="flex items-center gap-2 text-sm text-zinc-400 hover:text-zinc-300 transition-colors"
             >
               <span>{showAdvanced ? '▼' : '▶'}</span>
-              <span>Advanced Options (CRS Transformation)</span>
+              <span>Advanced Options</span>
             </button>
 
             {/* Advanced Options - Collapsible */}
@@ -426,6 +457,102 @@ function App() {
                   </FieldGroup>
                 </div>
 
+                {/* Processing Options */}
+                <div className="space-y-4 pt-4 border-t border-zinc-800">
+                  <Text className="font-medium text-zinc-300">
+                    Processing Options
+                  </Text>
+                  <Text className="text-sm text-zinc-500">
+                    Control how features are processed during conversion
+                  </Text>
+
+                  <div className="space-y-4">
+                    {/* Toggle Options */}
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <Field className="flex items-center justify-between">
+                        <div>
+                          <Label>Skip Failures</Label>
+                          <Text className="text-xs text-zinc-500 mt-1">
+                            Continue processing even if some features fail
+                          </Text>
+                        </div>
+                        <Switch
+                          checked={skipFailures}
+                          onChange={setSkipFailures}
+                        />
+                      </Field>
+
+                      <Field className="flex items-center justify-between">
+                        <div>
+                          <Label>Make Valid</Label>
+                          <Text className="text-xs text-zinc-500 mt-1">
+                            Repair invalid geometries automatically
+                          </Text>
+                        </div>
+                        <Switch
+                          checked={makeValid}
+                          onChange={setMakeValid}
+                        />
+                      </Field>
+
+                      <Field className="flex items-center justify-between">
+                        <div>
+                          <Label>Keep Z Dimension</Label>
+                          <Text className="text-xs text-zinc-500 mt-1">
+                            Preserve 3D coordinates (default: 2D)
+                          </Text>
+                        </div>
+                        <Switch
+                          checked={keepZ}
+                          onChange={setKeepZ}
+                        />
+                      </Field>
+
+                      <Field className="flex items-center justify-between">
+                        <div>
+                          <Label>Explode Collections</Label>
+                          <Text className="text-xs text-zinc-500 mt-1">
+                            Split GeometryCollections into simple features
+                          </Text>
+                        </div>
+                        <Switch
+                          checked={explodeCollections}
+                          onChange={setExplodeCollections}
+                        />
+                      </Field>
+
+                      <Field className="flex items-center justify-between">
+                        <div>
+                          <Label>Preserve FID</Label>
+                          <Text className="text-xs text-zinc-500 mt-1">
+                            Keep original feature IDs (for stable references)
+                          </Text>
+                        </div>
+                        <Switch
+                          checked={preserveFid}
+                          onChange={setPreserveFid}
+                        />
+                      </Field>
+                    </div>
+
+                    {/* Simplify */}
+                    <Field>
+                      <Label>Simplify Tolerance (optional)</Label>
+                      <Input
+                        type="number"
+                        value={simplifyTolerance}
+                        onChange={(e) => setSimplifyTolerance(parseFloat(e.target.value) || 0)}
+                        placeholder="0"
+                        step="0.0001"
+                        min="0"
+                      />
+                      <Text className="text-xs text-zinc-500 mt-2">
+                        Simplify geometries using Douglas-Peucker (0 = disabled, try 0.0001-0.01 for web maps)
+                      </Text>
+                    </Field>
+                  </div>
+                </div>
+
                 {/* Filtering Options */}
                 <div className="space-y-4 pt-4 border-t border-zinc-800">
                   <Text className="font-medium text-zinc-300">
@@ -436,7 +563,7 @@ function App() {
                   </Text>
 
                   <FieldGroup>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div className="grid grid-cols-1 gap-6">
                       {/* Layer Name */}
                       <Field>
                         <Label>Layer Name (optional)</Label>
@@ -468,8 +595,120 @@ function App() {
                           Only include specific geometry types
                         </Text>
                       </Field>
+
+                      {/* WHERE Clause */}
+                      <Field>
+                        <Label>Attribute Filter (WHERE clause)</Label>
+                        <Input
+                          type="text"
+                          value={whereClause}
+                          onChange={(e) => setWhereClause(e.target.value)}
+                          placeholder='e.g., type IN ("primary","secondary") AND lanes >= 2'
+                        />
+                        <Text className="text-xs text-zinc-500 mt-2">
+                          SQL-like filter for attributes (overrides geometry filter)
+                        </Text>
+                      </Field>
+
+                      {/* Field Selection */}
+                      <Field>
+                        <Label>Select Fields (optional)</Label>
+                        <Input
+                          type="text"
+                          value={selectFields}
+                          onChange={(e) => setSelectFields(e.target.value)}
+                          placeholder="e.g., name,type,lanes"
+                        />
+                        <Text className="text-xs text-zinc-500 mt-2">
+                          Comma-separated list of fields to include (empty = all fields)
+                        </Text>
+                      </Field>
                     </div>
                   </FieldGroup>
+                </div>
+
+                {/* Format-Specific Options */}
+                {(outputFormat === 'geojson' || outputFormat === 'csv') && (
+                  <div className="space-y-4 pt-4 border-t border-zinc-800">
+                    <Text className="font-medium text-zinc-300">
+                      Format-Specific Options
+                    </Text>
+                    <Text className="text-sm text-zinc-500">
+                      Options specific to the output format
+                    </Text>
+
+                    <FieldGroup>
+                      <div className="grid grid-cols-1 gap-6">
+                        {/* GeoJSON Precision */}
+                        {outputFormat === 'geojson' && (
+                          <Field>
+                            <Label>Coordinate Precision: {geojsonPrecision}</Label>
+                            <input
+                              type="range"
+                              min="5"
+                              max="10"
+                              value={geojsonPrecision}
+                              onChange={(e) => setGeojsonPrecision(parseInt(e.target.value))}
+                              className="w-full"
+                            />
+                            <Text className="text-xs text-zinc-500 mt-2">
+                              Number of decimal places for coordinates (5 = ~1m, 7 = ~1cm, 10 = ~1mm)
+                            </Text>
+                          </Field>
+                        )}
+
+                        {/* CSV Geometry Mode */}
+                        {outputFormat === 'csv' && (
+                          <Field>
+                            <Label>Geometry Format</Label>
+                            <Select
+                              value={csvGeometryMode}
+                              onChange={(e) => setCsvGeometryMode(e.target.value)}
+                            >
+                              <option value="WKT">WKT (Well-Known Text)</option>
+                              <option value="XY">X/Y Columns</option>
+                            </Select>
+                            <Text className="text-xs text-zinc-500 mt-2">
+                              How to represent geometries in CSV output
+                            </Text>
+                          </Field>
+                        )}
+                      </div>
+                    </FieldGroup>
+                  </div>
+                )}
+
+                {/* Automatic Features Info */}
+                <div className="space-y-3 pt-4 border-t border-zinc-800">
+                  <Text className="font-medium text-zinc-300">
+                    Built-in Optimizations
+                  </Text>
+                  <div className="space-y-2">
+                    <div className="flex items-start gap-2">
+                      <span className="text-emerald-500 mt-0.5">✓</span>
+                      <Text className="text-xs text-zinc-400">
+                        <strong className="text-zinc-300">Shapefile Geometry Splitting:</strong> Mixed geometries automatically split by type (points, lines, polygons) with multi-promotion
+                      </Text>
+                    </div>
+                    <div className="flex items-start gap-2">
+                      <span className="text-emerald-500 mt-0.5">✓</span>
+                      <Text className="text-xs text-zinc-400">
+                        <strong className="text-zinc-300">Format Optimizations:</strong> GeoJSON with bbox, GeoPackage with spatial index, Shapefile with UTF-8, CSV with geometry handling
+                      </Text>
+                    </div>
+                    <div className="flex items-start gap-2">
+                      <span className="text-emerald-500 mt-0.5">✓</span>
+                      <Text className="text-xs text-zinc-400">
+                        <strong className="text-zinc-300">Smart CRS:</strong> Auto-detects existing CRS, intelligently assigns vs transforms based on source data
+                      </Text>
+                    </div>
+                    <div className="flex items-start gap-2">
+                      <span className="text-blue-400 mt-0.5">⚙</span>
+                      <Text className="text-xs text-zinc-400">
+                        <strong className="text-zinc-300">Default Behavior:</strong> 2D output (toggle "Keep Z"), explode collections ON, precision=7 for GeoJSON
+                      </Text>
+                    </div>
+                  </div>
                 </div>
               </Fieldset>
             )}

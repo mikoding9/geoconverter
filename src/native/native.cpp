@@ -7,7 +7,8 @@
 #include <cpl_vsi.h>
 #include <cpl_string.h>
 #include <gdalwarper.h>
-#include <sstream>
+#include <gdal_utils.h>
+#include <algorithm>
 
 std::string Native::getGdalInfo() {
     GDALAllRegister();
@@ -21,26 +22,146 @@ std::string Native::getGdalInfo() {
     return info;
 }
 
-std::string getDriverNameFromFormat(const std::string& format) {
-    if (format == "geojson") return "GeoJSON";
-    if (format == "shapefile") return "ESRI Shapefile";
-    if (format == "geopackage") return "GPKG";
-    if (format == "kml") return "KML";
-    if (format == "gpx") return "GPX";
-    if (format == "gml") return "GML";
-    return "GeoJSON"; // default
+// ----------------- helpers -----------------
+static std::string toLower(std::string s) {
+    std::transform(s.begin(), s.end(), s.begin(), [](unsigned char c){ return std::tolower(c); });
+    return s;
 }
 
-std::string getExtensionFromFormat(const std::string& format) {
-    if (format == "geojson") return ".geojson";
-    if (format == "shapefile") return ".shp";
-    if (format == "geopackage") return ".gpkg";
-    if (format == "kml") return ".kml";
-    if (format == "gpx") return ".gpx";
-    if (format == "gml") return ".gml";
-    return ".geojson"; // default
+static std::string getDriverNameFromFormat(const std::string& format) {
+    auto f = toLower(format);
+    if (f == "geojson")     return "GeoJSON";
+    if (f == "shapefile")   return "ESRI Shapefile";
+    if (f == "geopackage")  return "GPKG";
+    if (f == "kml")         return "KML";
+    if (f == "gpx")         return "GPX";
+    if (f == "gml")         return "GML";
+    if (f == "flatgeobuf")  return "FlatGeobuf";
+    if (f == "csv")         return "CSV";
+    if (f == "parquet")     return "Parquet";
+    return "GeoJSON";
 }
 
+static std::string getExtensionFromFormat(const std::string& format) {
+    auto f = toLower(format);
+    if (f == "geojson")     return ".geojson";
+    if (f == "shapefile")   return ".zip";      // we will return a ZIP containing the SHP set
+    if (f == "geopackage")  return ".gpkg";
+    if (f == "kml")         return ".kml";
+    if (f == "gpx")         return ".gpx";
+    if (f == "gml")         return ".gml";
+    if (f == "flatgeobuf")  return ".fgb";
+    if (f == "csv")         return ".csv";
+    if (f == "parquet")     return ".parquet";
+    return ".geojson";
+}
+
+// Simple error handler without user data (compatible with older GDAL)
+static void ErrHandler(CPLErr, int, const char*) {
+    // Errors are collected by GDAL's default mechanism
+}
+
+// find a .shp inside /vsizip//vsimem/xxx.zip (first match)
+static std::string pickShpInsideZip(const std::string& zipVsi) {
+    char** files = VSIReadDirRecursive(zipVsi.c_str());
+    std::string shpPath;
+    for (int i = 0; files && files[i]; i++) {
+        std::string f = files[i];
+        if (f.size() > 4 && toLower(f.substr(f.size()-4)) == ".shp") {
+            shpPath = zipVsi + "/" + f; // e.g. /vsizip//vsimem/input.zip/folder/foo.shp
+            break;
+        }
+    }
+    CSLDestroy(files);
+    return shpPath;
+}
+
+// small wrapper for GDALVectorTranslate
+static GDALDataset* runVectorTranslate(GDALDataset* src, const std::string& dstPath, const std::vector<std::string>& argvVec) {
+    std::vector<char*> argv; argv.reserve(argvVec.size()+1);
+    for (auto& s : argvVec) argv.push_back(const_cast<char*>(s.c_str()));
+    argv.push_back(nullptr);
+    GDALVectorTranslateOptions* opts = GDALVectorTranslateOptionsNew(argv.data(), nullptr);
+    GDALDataset* out = (GDALDataset*)GDALVectorTranslate(dstPath.c_str(), nullptr, 1, (GDALDatasetH*)&src, opts, nullptr);
+    GDALVectorTranslateOptionsFree(opts);
+    return out;
+}
+
+// count features of certain OGR_GEOMETRY categories in a layer
+static GIntBig countGeomWhere(GDALDataset* ds, const std::string& layerName, const std::string& where) {
+    std::string sql = "SELECT COUNT(*) FROM \"" + layerName + "\"";
+    if (!where.empty()) sql += " WHERE " + where;
+    OGRLayer* lyr = ds->ExecuteSQL(sql.c_str(), nullptr, nullptr);
+    GIntBig cnt = 0;
+    if (lyr) {
+        OGRFeature* f = lyr->GetNextFeature();
+        if (f) {
+            // the COUNT(*) is at index 0
+            cnt = f->GetFieldAsInteger64(0);
+            OGRFeature::DestroyFeature(f);
+        }
+        ds->ReleaseResultSet(lyr);
+    }
+    return cnt;
+}
+
+// decide CRS args: transform or assign
+static void pushCrsArgs(std::vector<std::string>& args,
+                        GDALDataset* src,
+                        const std::string& sourceCrs,
+                        const std::string& targetCrs)
+{
+    const bool haveSrc = !sourceCrs.empty();
+    const bool haveDst = !targetCrs.empty();
+    if (haveSrc && haveDst && sourceCrs != targetCrs) {
+        args.insert(args.end(), {"-s_srs", sourceCrs, "-t_srs", targetCrs});
+        return;
+    }
+    if (haveDst && !haveSrc) {
+        // Only assign if layers have no SRS — heuristic: check first layer
+        OGRLayer* L0 = src->GetLayerCount() > 0 ? src->GetLayer(0) : nullptr;
+        OGRSpatialReference* srs = L0 ? L0->GetSpatialRef() : nullptr;
+        if (srs == nullptr) {
+            args.insert(args.end(), {"-a_srs", targetCrs});
+        }
+    }
+}
+
+static void pushDriverLCO(std::vector<std::string>& args, const std::string& driver, int geojsonPrecision, const std::string& csvGeometryMode) {
+    if (driver == "ESRI Shapefile") {
+        args.insert(args.end(), {"-lco", "ENCODING=UTF-8"});
+    } else if (driver == "GeoJSON") {
+        args.insert(args.end(), {"-lco", "WRITE_BBOX=YES"});
+        args.insert(args.end(), {"-lco", "COORDINATE_PRECISION=" + std::to_string(geojsonPrecision)});
+    } else if (driver == "GPKG") {
+        args.insert(args.end(), {"-lco", "SPATIAL_INDEX=YES"});
+    } else if (driver == "CSV") {
+        // CSV geometry mode: AS_WKT (default) or AS_XY
+        if (csvGeometryMode == "XY") {
+            args.insert(args.end(), {"-lco", "GEOMETRY=AS_XY"});
+        } else {
+            args.insert(args.end(), {"-lco", "GEOMETRY=AS_WKT"});
+        }
+    }
+}
+
+// where clauses for geometry families
+static const char* WHERE_POINT       = "OGR_GEOMETRY='POINT'";
+static const char* WHERE_MULTIPOINT  = "OGR_GEOMETRY='MULTIPOINT'";
+static const char* WHERE_LINES       = "OGR_GEOMETRY='LINESTRING' OR OGR_GEOMETRY='MULTILINESTRING'";
+static const char* WHERE_POLYS       = "OGR_GEOMETRY='POLYGON' OR OGR_GEOMETRY='MULTIPOLYGON'";
+
+// optional single-family where for non-SHP outputs (user-provided filter)
+static std::string whereFromFilter(const std::string& filter) {
+    auto f = toLower(filter);
+    if (f == "point" || f == "points") return WHERE_POINT;
+    if (f == "multipoint" || f == "multi-point") return WHERE_MULTIPOINT;
+    if (f == "line" || f == "lines" || f == "linestring") return WHERE_LINES;
+    if (f == "polygon" || f == "polygons") return WHERE_POLYS;
+    return std::string();
+}
+
+// ----------------- main API -----------------
 std::vector<uint8_t> Native::convertVector(
     const std::vector<uint8_t>& inputData,
     const std::string& inputFormat,
@@ -48,392 +169,221 @@ std::vector<uint8_t> Native::convertVector(
     const std::string& sourceCrs,
     const std::string& targetCrs,
     const std::string& layerName,
-    const std::string& geometryTypeFilter
+    const std::string& geometryTypeFilter,
+    bool skipFailures,
+    bool makeValid,
+    bool keepZ,
+    const std::string& whereClause,
+    const std::string& selectFields,
+    double simplifyTolerance,
+    bool explodeCollections,
+    bool preserveFid,
+    int geojsonPrecision,
+    const std::string& csvGeometryMode
 ) {
     GDALAllRegister();
-
     std::vector<uint8_t> result;
 
+    CPLPushErrorHandler(ErrHandler);
+    CPLErrorReset();
+
+    // ---- 1) Materialize input in /vsimem and open
+    std::string inputPath;
+    VSILFILE* fpIn = nullptr;
+
     try {
-        // Create input virtual file
-        std::string inputExt = getExtensionFromFormat(inputFormat);
-        std::string inputPath;
+        const std::string inFmt = toLower(inputFormat);
+        if (inFmt == "shapefile") {
+            const std::string zipPath = "/vsimem/input.zip";
+            fpIn = VSIFileFromMemBuffer(zipPath.c_str(),
+                                        const_cast<GByte*>(inputData.data()),
+                                        static_cast<vsi_l_offset>(inputData.size()),
+                                        FALSE);
+            if (!fpIn) throw std::runtime_error("Failed to create input ZIP file");
+            VSIFCloseL(fpIn); fpIn = nullptr;
 
-        // For shapefiles, we expect ZIP format
-        if (inputFormat == "shapefile") {
-            // Write ZIP file to virtual file system
-            std::string zipPath = "/vsimem/input.zip";
-            VSILFILE* fpZip = VSIFileFromMemBuffer(
-                zipPath.c_str(),
-                const_cast<GByte*>(inputData.data()),
-                inputData.size(),
-                FALSE
-            );
-            if (!fpZip) {
-                throw std::runtime_error("Failed to create input ZIP file");
-            }
-            VSIFCloseL(fpZip);
-
-            // Use /vsizip/ to access the shapefile inside
-            inputPath = "/vsizip/" + zipPath;
+            const std::string zipVsi = "/vsizip/" + zipPath; // note: /vsizip//vsimem/input.zip also works
+            inputPath = pickShpInsideZip(zipVsi);
+            if (inputPath.empty()) throw std::runtime_error("No .shp found in input ZIP");
         } else {
+            std::string inputExt = getExtensionFromFormat(inFmt);
+            if (inputExt == ".zip") inputExt = ".dat"; // non-shp should not be zip here
             inputPath = "/vsimem/input" + inputExt;
-            VSILFILE* fpIn = VSIFileFromMemBuffer(
-                inputPath.c_str(),
-                const_cast<GByte*>(inputData.data()),
-                inputData.size(),
-                FALSE
-            );
-            if (!fpIn) {
-                throw std::runtime_error("Failed to create input virtual file");
-            }
-            VSIFCloseL(fpIn);
+            fpIn = VSIFileFromMemBuffer(inputPath.c_str(),
+                                        const_cast<GByte*>(inputData.data()),
+                                        static_cast<vsi_l_offset>(inputData.size()),
+                                        FALSE);
+            if (!fpIn) throw std::runtime_error("Failed to create input virtual file");
+            VSIFCloseL(fpIn); fpIn = nullptr;
         }
 
-        // Open input dataset
         GDALDataset* poSrcDS = (GDALDataset*)GDALOpenEx(
-            inputPath.c_str(),
-            GDAL_OF_VECTOR | GDAL_OF_READONLY,
-            nullptr,
-            nullptr,
-            nullptr
+            inputPath.c_str(), GDAL_OF_VECTOR | GDAL_OF_READONLY, nullptr, nullptr, nullptr
         );
+        if (!poSrcDS) throw std::runtime_error("Failed to open input dataset");
 
-        if (poSrcDS == nullptr) {
-            if (inputFormat == "shapefile") {
-                VSIUnlink("/vsimem/input.zip");
-            } else {
-                VSIUnlink(inputPath.c_str());
-            }
-            throw std::runtime_error("Failed to open input dataset");
-        }
+        // ---- 2) Decide driver and output path
+        const std::string driver = getDriverNameFromFormat(outputFormat);
+        const std::string outExt = getExtensionFromFormat(outputFormat);
 
-        // Get output driver
-        std::string outputDriverName = getDriverNameFromFormat(outputFormat);
-        GDALDriver* poDriver = GetGDALDriverManager()->GetDriverByName(outputDriverName.c_str());
+        // Special case SHP: write *directly* into a zip with one or more entries
+        if (driver == "ESRI Shapefile") {
+            const std::string zipPath = "/vsimem/output.zip";
 
-        if (poDriver == nullptr) {
-            GDALClose(poSrcDS);
-            if (inputFormat == "shapefile") {
-                VSIUnlink("/vsimem/input.zip");
-            } else {
-                VSIUnlink(inputPath.c_str());
-            }
-            throw std::runtime_error("Output driver not available: " + outputDriverName);
-        }
+            const int nL = poSrcDS->GetLayerCount();
+            for (int i = 0; i < nL; i++) {
+                OGRLayer* L = poSrcDS->GetLayer(i);
+                if (!L) continue;
+                const std::string srcLayerName = L->GetName();
 
-        // Create output virtual file
-        std::string outputExt = getExtensionFromFormat(outputFormat);
-        std::string outputPath = "/vsimem/output" + outputExt;
+                // We split into up to 4 shapefiles per layer, only if counts > 0
+                struct Part { const char* where; const char* suffix; bool promoteToMulti; };
+                const Part parts[] = {
+                    { WHERE_POINT,      "_point",      false },
+                    { WHERE_MULTIPOINT, "_multipoint", false },
+                    { WHERE_LINES,      "_lines",      true  },
+                    { WHERE_POLYS,      "_polygons",   true  }
+                };
 
-        // Handle CRS reprojection for vector data
-        GDALDataset* poDstDS = nullptr;
+                for (const auto& p : parts) {
+                    GIntBig cnt = countGeomWhere(poSrcDS, srcLayerName, p.where);
+                    if (cnt <= 0) continue;
 
-        // Check if we need to perform CRS transformation
-        bool needsTransformation = !sourceCrs.empty() && !targetCrs.empty() && sourceCrs != targetCrs;
+                    // /vsizip//vsimem/output.zip/<name>.shp
+                    const std::string baseName =
+                        (layerName.empty() ? srcLayerName : layerName) + std::string(p.suffix);
+                    const std::string outEntry = "/vsizip" + zipPath + "/" + baseName + ".shp";
 
-        if (needsTransformation) {
-            // Create coordinate transformation
-            OGRSpatialReference oSourceSRS, oTargetSRS;
-            OGRErr errSource = oSourceSRS.SetFromUserInput(sourceCrs.c_str());
-            OGRErr errTarget = oTargetSRS.SetFromUserInput(targetCrs.c_str());
+                    std::vector<std::string> args = {
+                        "-f", "ESRI Shapefile",
+                        "-where", p.where,
+                        "-nln", baseName,
+                        "-dim", keepZ ? "XYZ" : "XY"
+                    };
 
-            if (errSource != OGRERR_NONE || errTarget != OGRERR_NONE) {
-                GDALClose(poSrcDS);
-                if (inputFormat == "shapefile") {
-                    VSIUnlink("/vsimem/input.zip");
-                } else {
-                    VSIUnlink(inputPath.c_str());
-                }
-                throw std::runtime_error("Failed to parse CRS definitions");
-            }
-
-            OGRCoordinateTransformation* poCT = OGRCreateCoordinateTransformation(&oSourceSRS, &oTargetSRS);
-            if (poCT == nullptr) {
-                GDALClose(poSrcDS);
-                if (inputFormat == "shapefile") {
-                    VSIUnlink("/vsimem/input.zip");
-                } else {
-                    VSIUnlink(inputPath.c_str());
-                }
-                throw std::runtime_error("Failed to create coordinate transformation");
-            }
-
-            // Create output dataset
-            poDstDS = poDriver->Create(
-                outputPath.c_str(),
-                0, 0, 0,
-                GDT_Unknown,
-                nullptr
-            );
-
-            if (poDstDS == nullptr) {
-                OGRCoordinateTransformation::DestroyCT(poCT);
-                GDALClose(poSrcDS);
-                if (inputFormat == "shapefile") {
-                    VSIUnlink("/vsimem/input.zip");
-                } else {
-                    VSIUnlink(inputPath.c_str());
-                }
-                throw std::runtime_error("Failed to create output dataset");
-            }
-
-            // Process each layer
-            int layerCount = poSrcDS->GetLayerCount();
-            for (int i = 0; i < layerCount; i++) {
-                OGRLayer* poSrcLayer = poSrcDS->GetLayer(i);
-                if (poSrcLayer == nullptr) continue;
-
-                // Determine output layer name
-                std::string outputLayerName = layerName.empty() ? poSrcLayer->GetName() : layerName;
-
-                // Create output layer with target CRS
-                OGRLayer* poDstLayer = poDstDS->CreateLayer(
-                    outputLayerName.c_str(),
-                    &oTargetSRS,
-                    poSrcLayer->GetGeomType(),
-                    nullptr
-                );
-
-                if (poDstLayer == nullptr) continue;
-
-                // Copy layer definition (fields)
-                OGRFeatureDefn* poSrcFDefn = poSrcLayer->GetLayerDefn();
-                for (int iField = 0; iField < poSrcFDefn->GetFieldCount(); iField++) {
-                    OGRFieldDefn* poFieldDefn = poSrcFDefn->GetFieldDefn(iField);
-                    poDstLayer->CreateField(poFieldDefn);
-                }
-
-                // Copy and transform features
-                poSrcLayer->ResetReading();
-                OGRFeature* poFeature;
-                while ((poFeature = poSrcLayer->GetNextFeature()) != nullptr) {
-                    OGRGeometry* poGeometry = poFeature->GetGeometryRef();
-
-                    // Apply geometry type filter if specified
-                    if (!geometryTypeFilter.empty() && poGeometry != nullptr) {
-                        std::string geomTypeName = OGRGeometryTypeToName(poGeometry->getGeometryType());
-                        if (geomTypeName.find(geometryTypeFilter) == std::string::npos) {
-                            OGRFeature::DestroyFeature(poFeature);
-                            continue; // Skip features that don't match the geometry type filter
-                        }
+                    // Explode collections
+                    if (explodeCollections) {
+                        args.push_back("-explodecollections");
                     }
 
-                    if (poGeometry != nullptr) {
-                        OGRErr err = poGeometry->transform(poCT);
-                        if (err != OGRERR_NONE) {
-                            OGRFeature::DestroyFeature(poFeature);
-                            continue; // Skip features that fail to transform
-                        }
+                    if (p.promoteToMulti) {
+                        args.insert(args.end(), {"-nlt", "PROMOTE_TO_MULTI"});
                     }
 
-                    // Create new feature in output layer
-                    OGRFeature* poDstFeature = OGRFeature::CreateFeature(poDstLayer->GetLayerDefn());
-                    poDstFeature->SetFrom(poFeature);
+                    // Global options
+                    if (skipFailures) args.push_back("-skipfailures");
+                    if (makeValid) args.push_back("-makevalid");
+                    if (preserveFid) args.push_back("-preserve_fid");
+                    if (simplifyTolerance > 0) {
+                        args.insert(args.end(), {"-simplify", std::to_string(simplifyTolerance)});
+                    }
 
-                    if (poDstLayer->CreateFeature(poDstFeature) != OGRERR_NONE) {
-                        OGRFeature::DestroyFeature(poDstFeature);
-                        OGRFeature::DestroyFeature(poFeature);
+                    pushDriverLCO(args, driver, geojsonPrecision, csvGeometryMode);
+                    pushCrsArgs(args, poSrcDS, sourceCrs, targetCrs);
+
+                    GDALDataset* dst = runVectorTranslate(poSrcDS, outEntry, args);
+                    if (!dst) {
+                        // keep going to next part; error collected in eb.s
                         continue;
                     }
-
-                    OGRFeature::DestroyFeature(poDstFeature);
-                    OGRFeature::DestroyFeature(poFeature);
+                    GDALClose(dst);
                 }
             }
 
-            OGRCoordinateTransformation::DestroyCT(poCT);
-
-        } else {
-            // No transformation needed, but check if we need filtering or layer name changes
-            bool needsCustomProcessing = !layerName.empty() || !geometryTypeFilter.empty();
-
-            if (needsCustomProcessing) {
-                // Need to process layer by layer for filtering or renaming
-                poDstDS = poDriver->Create(
-                    outputPath.c_str(),
-                    0, 0, 0,
-                    GDT_Unknown,
-                    nullptr
-                );
-
-                if (poDstDS == nullptr) {
-                    GDALClose(poSrcDS);
-                    if (inputFormat == "shapefile") {
-                        VSIUnlink("/vsimem/input.zip");
-                    } else {
-                        VSIUnlink(inputPath.c_str());
-                    }
-                    throw std::runtime_error("Failed to create output dataset");
-                }
-
-                // Process each layer
-                int layerCount = poSrcDS->GetLayerCount();
-                for (int i = 0; i < layerCount; i++) {
-                    OGRLayer* poSrcLayer = poSrcDS->GetLayer(i);
-                    if (poSrcLayer == nullptr) continue;
-
-                    // Determine output layer name
-                    std::string outputLayerName = layerName.empty() ? poSrcLayer->GetName() : layerName;
-
-                    // Get source spatial reference
-                    OGRSpatialReference* poSrcSRS = poSrcLayer->GetSpatialRef();
-
-                    // Create output layer
-                    OGRLayer* poDstLayer = poDstDS->CreateLayer(
-                        outputLayerName.c_str(),
-                        poSrcSRS,
-                        poSrcLayer->GetGeomType(),
-                        nullptr
-                    );
-
-                    if (poDstLayer == nullptr) continue;
-
-                    // Copy layer definition (fields)
-                    OGRFeatureDefn* poSrcFDefn = poSrcLayer->GetLayerDefn();
-                    for (int iField = 0; iField < poSrcFDefn->GetFieldCount(); iField++) {
-                        OGRFieldDefn* poFieldDefn = poSrcFDefn->GetFieldDefn(iField);
-                        poDstLayer->CreateField(poFieldDefn);
-                    }
-
-                    // Copy features with optional filtering
-                    poSrcLayer->ResetReading();
-                    OGRFeature* poFeature;
-                    while ((poFeature = poSrcLayer->GetNextFeature()) != nullptr) {
-                        OGRGeometry* poGeometry = poFeature->GetGeometryRef();
-
-                        // Apply geometry type filter if specified
-                        if (!geometryTypeFilter.empty() && poGeometry != nullptr) {
-                            std::string geomTypeName = OGRGeometryTypeToName(poGeometry->getGeometryType());
-                            if (geomTypeName.find(geometryTypeFilter) == std::string::npos) {
-                                OGRFeature::DestroyFeature(poFeature);
-                                continue;
-                            }
-                        }
-
-                        // Create new feature in output layer
-                        OGRFeature* poDstFeature = OGRFeature::CreateFeature(poDstLayer->GetLayerDefn());
-                        poDstFeature->SetFrom(poFeature);
-
-                        if (poDstLayer->CreateFeature(poDstFeature) != OGRERR_NONE) {
-                            OGRFeature::DestroyFeature(poDstFeature);
-                            OGRFeature::DestroyFeature(poFeature);
-                            continue;
-                        }
-
-                        OGRFeature::DestroyFeature(poDstFeature);
-                        OGRFeature::DestroyFeature(poFeature);
-                    }
-                }
-            } else {
-                // Simple copy, no filtering or custom processing needed
-                char** papszOptions = nullptr;
-
-                // If target CRS is specified but no transformation needed, set it on output
-                if (!targetCrs.empty()) {
-                    papszOptions = CSLSetNameValue(papszOptions, "TARGET_SRS", targetCrs.c_str());
-                }
-
-                poDstDS = poDriver->CreateCopy(
-                    outputPath.c_str(),
-                    poSrcDS,
-                    FALSE,
-                    papszOptions,
-                    nullptr,
-                    nullptr
-                );
-
-                CSLDestroy(papszOptions);
-            }
-        }
-
-        if (poDstDS == nullptr) {
-            GDALClose(poSrcDS);
-            if (inputFormat == "shapefile") {
-                VSIUnlink("/vsimem/input.zip");
-            } else {
-                VSIUnlink(inputPath.c_str());
-            }
-            throw std::runtime_error("Conversion failed - could not create output");
-        }
-
-        // Close datasets to flush
-        GDALClose(poDstDS);
-        GDALClose(poSrcDS);
-
-        // For shapefile output, we need to ZIP all the related files
-        if (outputFormat == "shapefile") {
-            // Create a ZIP file in memory containing all shapefile components
-            std::string zipPath = "/vsimem/output.zip";
-            std::string zipVsiPath = "/vsizip/" + zipPath;
-
-            // Common shapefile extensions
-            const char* extensions[] = {".shp", ".shx", ".dbf", ".prj", ".cpg"};
-            std::string baseName = "/vsimem/output";
-
-            // Copy each shapefile component into the ZIP
-            for (const char* ext : extensions) {
-                std::string srcFile = baseName + ext;
-                vsi_l_offset fileLength = 0;
-                GByte* fileData = VSIGetMemFileBuffer(srcFile.c_str(), &fileLength, FALSE);
-
-                if (fileData != nullptr && fileLength > 0) {
-                    // Write to ZIP
-                    std::string zipEntryPath = zipVsiPath + "/output" + ext;
-                    VSILFILE* fpZipEntry = VSIFOpenL(zipEntryPath.c_str(), "wb");
-                    if (fpZipEntry) {
-                        VSIFWriteL(fileData, 1, fileLength, fpZipEntry);
-                        VSIFCloseL(fpZipEntry);
-                    }
-                }
-
-                // Clean up individual file
-                VSIUnlink(srcFile.c_str());
-            }
-
-            // Read the ZIP file
-            vsi_l_offset zipLength = 0;
-            GByte* zipData = VSIGetMemFileBuffer(zipPath.c_str(), &zipLength, FALSE);
-
-            if (zipData != nullptr && zipLength > 0) {
-                result.assign(zipData, zipData + zipLength);
+            // collect the resulting ZIP bytes
+            vsi_l_offset zipLen = 0;
+            GByte* zipBuf = VSIGetMemFileBuffer("/vsimem/output.zip", &zipLen, FALSE);
+            if (zipBuf && zipLen > 0) {
+                result.assign(zipBuf, zipBuf + zipLen);
             } else {
                 throw std::runtime_error("Failed to create shapefile ZIP");
             }
+            VSIUnlink("/vsimem/output.zip");
+        }
+        else {
+            // Non-SHP: single output file in /vsimem
+            const std::string outPath = "/vsimem/output" + outExt;
 
-            VSIUnlink(zipPath.c_str());
+            std::vector<std::string> args = {
+                "-f", driver,
+                "-dim", keepZ ? "XYZ" : "XY"
+            };
 
-        } else {
-            // For other formats, read single file
-            vsi_l_offset nLength = 0;
-            GByte* pabyData = VSIGetMemFileBuffer(outputPath.c_str(), &nLength, FALSE);
-
-            if (pabyData != nullptr && nLength > 0) {
-                result.assign(pabyData, pabyData + nLength);
-            } else {
-                if (inputFormat == "shapefile") {
-                    VSIUnlink("/vsimem/input.zip");
-                } else {
-                    VSIUnlink(inputPath.c_str());
-                }
-                VSIUnlink(outputPath.c_str());
-                throw std::runtime_error("Failed to read output data");
+            // Explode collections
+            if (explodeCollections) {
+                args.push_back("-explodecollections");
             }
 
-            VSIUnlink(outputPath.c_str());
+            // Global options
+            if (skipFailures) args.push_back("-skipfailures");
+            if (makeValid) args.push_back("-makevalid");
+            if (preserveFid) args.push_back("-preserve_fid");
+
+            // Simplify geometry
+            if (simplifyTolerance > 0) {
+                args.insert(args.end(), {"-simplify", std::to_string(simplifyTolerance)});
+            }
+
+            // optional per-format LCOs
+            pushDriverLCO(args, driver, geojsonPrecision, csvGeometryMode);
+            // CRS behavior
+            pushCrsArgs(args, poSrcDS, sourceCrs, targetCrs);
+
+            // Optional layer rename (mostly relevant for single-layer formats)
+            if (!layerName.empty()) {
+                args.insert(args.end(), {"-nln", layerName});
+            }
+
+            // Optional geometry filter (single family)
+            const std::string where = whereFromFilter(geometryTypeFilter);
+            if (!where.empty()) {
+                args.insert(args.end(), {"-where", where});
+            }
+
+            // User-provided WHERE clause (more flexible than geometry filter)
+            if (!whereClause.empty()) {
+                args.insert(args.end(), {"-where", whereClause});
+            }
+
+            // Field selection
+            if (!selectFields.empty()) {
+                args.insert(args.end(), {"-select", selectFields});
+            }
+
+            GDALDataset* dst = runVectorTranslate(poSrcDS, outPath, args);
+            if (!dst) {
+                GDALClose(poSrcDS);
+                throw std::runtime_error("Vector translate failed");
+            }
+            GDALClose(dst);
+
+            // read output file
+            vsi_l_offset n = 0;
+            GByte* buf = VSIGetMemFileBuffer(outPath.c_str(), &n, FALSE);
+            if (!buf || n == 0) {
+                GDALClose(poSrcDS);
+                VSIUnlink(outPath.c_str());
+                throw std::runtime_error("Failed to read output data");
+            }
+            result.assign(buf, buf + n);
+            VSIUnlink(outPath.c_str());
         }
 
-        // Clean up input files
-        if (inputFormat == "shapefile") {
+        GDALClose(poSrcDS);
+
+        // cleanup input
+        if (toLower(inputFormat) == "shapefile") {
             VSIUnlink("/vsimem/input.zip");
         } else {
             VSIUnlink(inputPath.c_str());
         }
 
-    } catch (const std::exception& e) {
-        // Return empty vector on error
+    } catch (const std::exception& ex) {
+        // For now, keep contract: empty vector indicates failure.
+        (void)ex;
         result.clear();
     }
 
+    CPLPopErrorHandler();
     return result;
 }
