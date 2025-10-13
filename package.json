@@ -1,7 +1,7 @@
 {
   "name": "geoconverter",
   "version": "1.0.1",
-  "description": "A browser-based geospatial file converter powered by GDAL/OGR and WebAssembly. Transform vector data between GeoJSON, Shapefile, GeoPackage, KML, GPX, GML, FlatGeobuf, CSV, and PMTiles formats.",
+  "description": "A browser-based geospatial file converter powered by GDAL/OGR and WebAssembly. Transform vector data between GeoJSON, Shapefile, GeoPackage, KML, GPX, GML, FlatGeobuf, CSV, PMTiles, and MBTiles formats.",
   "homepage": "https://github.com/mikoding/geoconverter#readme",
   "repository": {
     "type": "git",

@@ -11,7 +11,8 @@ import {
   DocumentArrowUpIcon,
   ArrowDownTrayIcon,
   EyeIcon,
-  XMarkIcon
+  XMarkIcon,
+  QuestionMarkCircleIcon
 } from '@heroicons/react/24/outline'
 import { motion } from 'motion/react'
 import clsx from 'clsx'
@@ -21,6 +22,7 @@ import { Text } from '@/components/text'
 import { SupportedFormats, SUPPORTED_FORMATS } from '@/components/SupportedFormats'
 import { FeedbackForm } from '@/components/FeedbackForm'
 import { Toast } from '@/components/Toast'
+import { HelpDialog } from '@/components/HelpDialog'
 import Map, { Source, Layer } from 'react-map-gl/maplibre'
 import 'maplibre-gl/dist/maplibre-gl.css'
 import { ParallaxStars } from '@/components/ParallaxStars'
@@ -86,6 +88,9 @@ function App() {
   const [showPreview, setShowPreview] = useState(false)
   const [previewData, setPreviewData] = useState(null)
 
+  // Help dialog state
+  const [showHelp, setShowHelp] = useState(false)
+
   useEffect(() => {
     initCppJs().then(() => {
       setGdalVersion(Native.getGdalInfo());
@@ -109,6 +114,7 @@ function App() {
       'fgb': 'flatgeobuf',
       'csv': 'csv',
       'pmtiles': 'pmtiles',
+      'mbtiles': 'mbtiles',
     }
 
     return extensionMap[ext] || 'geojson' // Default to geojson
@@ -304,7 +310,7 @@ function App() {
       {/* Header */}
       <header className="border-b border-zinc-700/50 backdrop-blur-md bg-zinc-900/90 sticky top-0 z-10 shadow-lg">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
-          <div className="flex items-center justify-between">
+          <div className="flex items-center justify-between space-x-3">
             <div className="flex items-center gap-3">
               <h1 className="text-xl font-semibold text-zinc-100">GeoConverter</h1>
               <Badge
@@ -318,6 +324,14 @@ function App() {
                 <span>{isInitializing ? 'Loading...' : gdalVersion}</span>
               </Badge>
             </div>
+            <Button
+              outline
+              onClick={() => setShowHelp(true)}
+              className="flex items-center gap-2 h-9"
+            >
+              <QuestionMarkCircleIcon className="w-5 h-5" />
+              <span className="hidden sm:inline">Help</span>
+            </Button>
           </div>
         </div>
       </header>
@@ -392,7 +406,7 @@ function App() {
                   onChange={handleFileChange}
                   className="hidden"
                   id="file-upload"
-                  accept=".json,.geojson,.zip,.gpkg,.kml,.gpx,.gml,.fgb,.csv,.pmtiles"
+                  accept=".json,.geojson,.zip,.gpkg,.kml,.gpx,.gml,.fgb,.csv,.pmtiles,.mbtiles"
                 />
                 <label
                   htmlFor="file-upload"
@@ -1068,6 +1082,8 @@ function App() {
         isOpen={toast.isOpen}
         onClose={() => setToast({ ...toast, isOpen: false })}
       />
+
+      <HelpDialog isOpen={showHelp} onClose={() => setShowHelp(false)} />
     </div>
   )
 }

@@ -65,6 +65,13 @@ const SUPPORTED_FORMATS = [
     description: 'Cloud-optimized format for tiled map data. Single-file archive with efficient HTTP range requests.',
     useCase: 'Web mapping, tile servers, cloud storage'
   },
+  {
+    value: 'mbtiles',
+    label: 'MBTiles',
+    ext: '.mbtiles',
+    description: 'SQLite-based format for storing tile data. Developed by Mapbox for offline mapping and tile distribution.',
+    useCase: 'Offline maps, mobile apps, tile servers'
+  },
 ]
 
 export function SupportedFormats() {

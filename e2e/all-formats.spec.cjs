@@ -4,7 +4,7 @@ const path = require('path');
 const fs = require('fs');
 
 /**
- * Comprehensive test suite for all 9 supported formats:
+ * Comprehensive test suite for all 10 supported formats:
  * 1. GeoJSON
  * 2. Shapefile
  * 3. GeoPackage
@@ -14,6 +14,7 @@ const fs = require('fs');
  * 7. FlatGeobuf
  * 8. CSV
  * 9. PMTiles
+ * 10. MBTiles
  */
 
 test.describe('GeoConverter - All Format Tests', () => {
@@ -182,6 +183,18 @@ test.describe('GeoConverter - All Format Tests', () => {
       const downloadPath = await saveAndReadDownload(download);
 
       // PMTiles files have specific magic bytes
+      const content = fs.readFileSync(downloadPath);
+      expect(content.length).toBeGreaterThan(4);
+
+      cleanupDownload(downloadPath);
+    });
+
+    test('should convert GeoJSON to MBTiles', async ({ page }) => {
+      const download = await performConversion(page, 'geojson', 'mbtiles', 'sample.geojson');
+      verifyDownload(download, 'sample', '.mbtiles');
+      const downloadPath = await saveAndReadDownload(download);
+
+      // MBTiles is SQLite-based
       const content = fs.readFileSync(downloadPath);
       expect(content.length).toBeGreaterThan(4);
 
@@ -438,6 +451,38 @@ test.describe('GeoConverter - All Format Tests', () => {
     });
   });
 
+  test.describe('10. MBTiles Format', () => {
+    test('should convert MBTiles to GeoJSON', async ({ page }) => {
+      const download = await performConversion(page, 'mbtiles', 'geojson', 'sample.mbtiles');
+      verifyDownload(download, 'sample', '.geojson');
+      const downloadPath = await saveAndReadDownload(download);
+
+      const content = fs.readFileSync(downloadPath, 'utf-8');
+      const geojson = JSON.parse(content);
+      expect(geojson.type).toBe('FeatureCollection');
+
+      cleanupDownload(downloadPath);
+    });
+
+    test('should convert MBTiles to CSV', async ({ page }) => {
+      const download = await performConversion(page, 'mbtiles', 'csv', 'sample.mbtiles');
+      verifyDownload(download, 'sample', '.csv');
+      const downloadPath = await saveAndReadDownload(download);
+
+      const content = fs.readFileSync(downloadPath, 'utf-8');
+      expect(content.length).toBeGreaterThan(0);
+
+      cleanupDownload(downloadPath);
+    });
+
+    test('should convert MBTiles to GeoPackage', async ({ page }) => {
+      const download = await performConversion(page, 'mbtiles', 'geopackage', 'sample.mbtiles');
+      verifyDownload(download, 'sample', '.gpkg');
+      const downloadPath = await saveAndReadDownload(download);
+      cleanupDownload(downloadPath);
+    });
+  });
+
   test.describe('Format Auto-Detection', () => {
     test('should auto-detect GeoJSON format from .geojson file', async ({ page }) => {
       const fileInput = page.locator('input[type="file"]');
@@ -497,7 +542,7 @@ test.describe('GeoConverter - All Format Tests', () => {
       await expect(page.locator('text=Data Filtering')).toBeVisible();
     });
 
-    test('should display all 9 supported formats in format lists', async ({ page }) => {
+    test('should display all 10 supported formats in format lists', async ({ page }) => {
       const inputFormatSelect = page.locator('label:has-text("Input Format")').locator('..').locator('select');
       const outputFormatSelect = page.locator('label:has-text("Output Format")').locator('..').locator('select');
 
@@ -510,7 +555,8 @@ test.describe('GeoConverter - All Format Tests', () => {
         'GML',
         'FlatGeobuf',
         'CSV',
-        'PMTiles'
+        'PMTiles',
+        'MBTiles'
       ];
 
       // Check input formats
