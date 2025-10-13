@@ -2,23 +2,180 @@
 <html lang="en" class="dark">
   <head>
     <meta charset="UTF-8" />
-    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>GeoConverter - Browser-based Geospatial File Converter</title>
-    <meta name="description" content="Transform geospatial vector data between GeoJSON, Shapefile, KML, GeoPackage, and more. All processing happens in your browser using WebAssembly. No uploads, complete privacy." />
-    <meta name="keywords" content="geospatial, GIS, GDAL, converter, GeoJSON, Shapefile, KML, GeoPackage, GPX, WebAssembly" />
-    <meta name="author" content="mikoding" />
 
-    <!-- Open Graph / Social Media -->
+    <!-- Primary Meta Tags -->
+    <title>GeoConverter - Free Online Geospatial File Converter | GeoJSON, Shapefile, KML, GeoPackage</title>
+    <meta name="title" content="GeoConverter - Free Online Geospatial File Converter | GeoJSON, Shapefile, KML, GeoPackage" />
+    <meta name="description" content="Free browser-based GIS file converter. Transform geospatial data between GeoJSON, Shapefile, KML, GeoPackage, GPX, GML, FlatGeobuf, CSV, PMTiles, and MBTiles. Privacy-focused with GDAL/OGR & WebAssembly. No uploads required." />
+    <meta name="keywords" content="geospatial converter, GIS converter, GeoJSON converter, Shapefile converter, KML converter, GeoPackage converter, GDAL online, OGR converter, WebAssembly GIS, geospatial file format converter, vector data converter, GPX converter, GML converter, FlatGeobuf, PMTiles, MBTiles, coordinate transformation, EPSG converter, CRS transformation, browser-based GIS, online GIS tools, free GIS converter" />
+    <meta name="author" content="mikoding" />
+    <meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1" />
+    <meta name="googlebot" content="index, follow" />
+    <meta name="bingbot" content="index, follow" />
+
+    <!-- Canonical URL -->
+    <link rel="canonical" href="https://geoconverter.mikoding.com" />
+
+    <!-- Theme Color -->
+    <meta name="theme-color" content="#10b981" />
+    <meta name="msapplication-TileColor" content="#10b981" />
+
+    <!-- Favicon & Icons -->
+    <link rel="icon" type="image/png" sizes="192x192" href="/icons/android/android-launchericon-192-192.png" />
+    <link rel="icon" type="image/png" sizes="512x512" href="/icons/android/android-launchericon-512-512.png" />
+    <link rel="apple-touch-icon" sizes="180x180" href="/icons/ios/180.png" />
+    <link rel="apple-touch-icon" sizes="152x152" href="/icons/ios/152.png" />
+    <link rel="apple-touch-icon" sizes="144x144" href="/icons/ios/144.png" />
+    <link rel="apple-touch-icon" sizes="120x120" href="/icons/ios/120.png" />
+    <link rel="manifest" href="/manifest.json" />
+
+    <!-- Open Graph / Facebook -->
     <meta property="og:type" content="website" />
-    <meta property="og:title" content="GeoConverter - Browser-based Geospatial File Converter" />
-    <meta property="og:description" content="Transform geospatial vector data between multiple formats directly in your browser. Powered by GDAL/OGR and WebAssembly." />
+    <meta property="og:url" content="https://geoconverter.mikoding.com" />
+    <meta property="og:title" content="GeoConverter - Free Online Geospatial File Converter" />
+    <meta property="og:description" content="Transform GIS vector data between GeoJSON, Shapefile, KML, GeoPackage, and more. 100% browser-based with GDAL/OGR. No uploads, complete privacy." />
     <meta property="og:site_name" content="GeoConverter" />
+    <meta property="og:locale" content="en_US" />
+    <meta property="og:image" content="https://geoconverter.mikoding.com/og_image.png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:image:alt" content="GeoConverter - Browser-based Geospatial File Converter" />
+    <meta property="og:image:type" content="image/png" />
 
     <!-- Twitter Card -->
     <meta name="twitter:card" content="summary_large_image" />
-    <meta name="twitter:title" content="GeoConverter - Browser-based Geospatial File Converter" />
-    <meta name="twitter:description" content="Transform geospatial vector data between multiple formats directly in your browser. Powered by GDAL/OGR and WebAssembly." />
+    <meta name="twitter:url" content="https://geoconverter.mikoding.com" />
+    <meta name="twitter:title" content="GeoConverter - Free Online Geospatial File Converter" />
+    <meta name="twitter:description" content="Transform GIS vector data between GeoJSON, Shapefile, KML, GeoPackage, and more. 100% browser-based with GDAL/OGR. No uploads, complete privacy." />
+    <meta name="twitter:image" content="https://geoconverter.mikoding.com/og_image.png" />
+    <meta name="twitter:image:alt" content="GeoConverter - Browser-based Geospatial File Converter" />
+    <meta name="twitter:creator" content="@mikoding" />
+
+    <!-- Structured Data - JSON-LD -->
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "WebApplication",
+      "name": "GeoConverter",
+      "alternateName": "GeoConverter - Geospatial File Converter",
+      "url": "https://geoconverter.mikoding.com",
+      "description": "Free browser-based geospatial file converter that transforms GIS vector data between multiple formats including GeoJSON, Shapefile, KML, GeoPackage, GPX, GML, FlatGeobuf, CSV, PMTiles, and MBTiles. Powered by GDAL/OGR and WebAssembly.",
+      "applicationCategory": "UtilitiesApplication",
+      "operatingSystem": "Any (Web Browser)",
+      "browserRequirements": "Requires JavaScript and WebAssembly support",
+      "offers": {
+        "@type": "Offer",
+        "price": "0",
+        "priceCurrency": "USD"
+      },
+      "author": {
+        "@type": "Person",
+        "name": "mikoding",
+        "url": "https://github.com/mikoding"
+      },
+      "creator": {
+        "@type": "Person",
+        "name": "mikoding",
+        "url": "https://github.com/mikoding"
+      },
+      "softwareVersion": "1.0.1",
+      "aggregateRating": {
+        "@type": "AggregateRating",
+        "ratingValue": "5",
+        "ratingCount": "1"
+      },
+      "featureList": [
+        "GeoJSON to Shapefile conversion",
+        "Shapefile to GeoJSON conversion",
+        "KML to GeoPackage conversion",
+        "GPX file conversion",
+        "GML format support",
+        "FlatGeobuf conversion",
+        "CSV with geometry support",
+        "PMTiles and MBTiles support",
+        "Coordinate Reference System (CRS) transformation",
+        "EPSG code conversion",
+        "Geometry filtering and validation",
+        "100% client-side processing",
+        "No file uploads required",
+        "Privacy-focused design",
+        "GDAL/OGR powered",
+        "WebAssembly performance"
+      ],
+      "screenshot": "https://geoconverter.mikoding.com/og_image.png",
+      "image": "https://geoconverter.mikoding.com/og_image.png",
+      "license": "https://opensource.org/licenses/MIT"
+    }
+    </script>
+
+    <!-- Structured Data - BreadcrumbList -->
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "BreadcrumbList",
+      "itemListElement": [{
+        "@type": "ListItem",
+        "position": 1,
+        "name": "Home",
+        "item": "https://geoconverter.mikoding.com"
+      }]
+    }
+    </script>
+
+    <!-- Structured Data - FAQPage -->
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "FAQPage",
+      "mainEntity": [{
+        "@type": "Question",
+        "name": "What file formats does GeoConverter support?",
+        "acceptedAnswer": {
+          "@type": "Answer",
+          "text": "GeoConverter supports GeoJSON, Shapefile, GeoPackage, KML, GPX, GML, FlatGeobuf, CSV with geometry, PMTiles, and MBTiles formats."
+        }
+      },{
+        "@type": "Question",
+        "name": "Is GeoConverter free to use?",
+        "acceptedAnswer": {
+          "@type": "Answer",
+          "text": "Yes, GeoConverter is completely free and open-source. All processing happens in your browser with no server uploads required."
+        }
+      },{
+        "@type": "Question",
+        "name": "Does GeoConverter upload my files to a server?",
+        "acceptedAnswer": {
+          "@type": "Answer",
+          "text": "No, GeoConverter performs 100% client-side processing using WebAssembly. Your files never leave your browser, ensuring complete privacy."
+        }
+      },{
+        "@type": "Question",
+        "name": "Can GeoConverter transform coordinate systems?",
+        "acceptedAnswer": {
+          "@type": "Answer",
+          "text": "Yes, GeoConverter supports CRS (Coordinate Reference System) transformation between different EPSG codes and projections using GDAL/OGR."
+        }
+      }]
+    }
+    </script>
+
+    <!-- Additional SEO -->
+    <meta name="application-name" content="GeoConverter" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="GeoConverter" />
+    <meta name="format-detection" content="telephone=no" />
+    <meta name="mobile-web-app-capable" content="yes" />
+
+    <!-- Geo Tags (relevant for geospatial app) -->
+    <meta name="geo.region" content="US" />
+    <meta name="geo.placename" content="Global" />
+
+    <!-- Performance & Security -->
+    <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+    <link rel="dns-prefetch" href="https://rsms.me" />
+    <link rel="preconnect" href="https://rsms.me" crossorigin />
 
     <link rel="stylesheet" href="https://rsms.me/inter/inter.css" />
   </head>

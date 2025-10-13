@@ -14,9 +14,6 @@ importers:
       '@cpp.js/plugin-vite':
         specifier: ^1.0.2
         version: 1.0.2
-      '@cpp.js/sample-lib-prebuilt-matrix':
-        specifier: ^1.0.0
-        version: 1.0.0
       jszip:
         specifier: ^3.10.1
         version: 3.10.1
@@ -125,9 +122,6 @@ packages:
 
   '@cpp.js/plugin-vite@1.0.2':
     resolution: {integrity: sha512-dFP42ok+fx+AE5RlsHZa45fdB9LuynTQCdqueHMJB1U5ruZhU586/JZ8jCPsvl+LCME7dy4jOkQ9m6hp9D4DFg==}
-
-  '@cpp.js/sample-lib-prebuilt-matrix@1.0.0':
-    resolution: {integrity: sha512-+sepuR+mfvGtFPG9z8tP3JT326t5/PTJN1eJGnZFGDo/JD6fzxd7OmVvb8TZyQqJbYOxBwXnR4tkV+lgn9juug==}
 
   '@esbuild/aix-ppc64@0.25.10':
     resolution: {integrity: sha512-0NFWnA+7l41irNuaSVlLfgNT12caWJVLzp5eAVhZ0z1qpxbockccEt3s+149rE64VUI3Ml2zt8Nv5JVc4QXTsw==}
@@ -2488,8 +2482,6 @@ snapshots:
       cpp.js: 1.0.4
     transitivePeerDependencies:
       - debug
-
-  '@cpp.js/sample-lib-prebuilt-matrix@1.0.0': {}
 
   '@esbuild/aix-ppc64@0.25.10':
     optional: true
