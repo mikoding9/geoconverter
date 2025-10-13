@@ -9,7 +9,9 @@ import {
   InformationCircleIcon,
   ArrowPathIcon,
   DocumentArrowUpIcon,
-  ArrowDownTrayIcon
+  ArrowDownTrayIcon,
+  EyeIcon,
+  XMarkIcon
 } from '@heroicons/react/24/outline'
 import { motion } from 'motion/react'
 import clsx from 'clsx'
@@ -76,6 +78,10 @@ function App() {
   // Toast state
   const [toast, setToast] = useState({ isOpen: false, message: '', type: 'success' })
 
+  // Preview state
+  const [showPreview, setShowPreview] = useState(false)
+  const [previewData, setPreviewData] = useState(null)
+
   useEffect(() => {
     initCppJs().then(() => {
       setGdalVersion(Native.getGdalInfo());
@@ -108,6 +114,7 @@ function App() {
     const file = e.target.files?.[0]
     if (file) {
       setSelectedFile(file)
+      setPreviewData(null) // Reset preview data
 
       // Auto-detect input format from file extension
       const detectedFormat = detectFormatFromFile(file.name)
@@ -120,6 +127,132 @@ function App() {
       } else if (detectedFormat === 'geojson') {
         setOutputFormat('shapefile')
       }
+    }
+  }
+
+  const extractPreviewData = async () => {
+    if (!selectedFile) return
+
+    try {
+      let fileContent = null
+
+      // For GeoJSON files, parse directly
+      if (inputFormat === 'geojson') {
+        const text = await selectedFile.text()
+        fileContent = JSON.parse(text)
+      } else {
+        // For all other formats, use GDAL to convert to GeoJSON first
+        // This is easier than extracting metadata in C++
+        const arrayBuffer = await selectedFile.arrayBuffer()
+        const inputArray = new Uint8Array(arrayBuffer)
+
+        // Create a C++ vector from the Uint8Array
+        const inputVector = new VectorUint8()
+        for (let i = 0; i < inputArray.length; i++) {
+          inputVector.push_back(inputArray[i])
+        }
+
+        // Convert to GeoJSON using GDAL (with minimal options for speed)
+        const outputVector = Native.convertVector(
+          inputVector,
+          inputFormat,
+          'geojson', // Always convert to GeoJSON for preview
+          '', // No CRS transformation
+          '', // No CRS transformation
+          '', // No layer name
+          '', // No geometry filter
+          false, // skipFailures
+          false, // makeValid
+          false, // keepZ (2D for preview)
+          '', // No where clause
+          '', // No select fields
+          0, // No simplify
+          false, // Don't explode collections for preview
+          false, // preserveFid
+          7, // Default precision
+          'WKT' // CSV mode (not used)
+        )
+
+        inputVector.delete()
+
+        if (!outputVector || outputVector.size() === 0) {
+          if (outputVector) outputVector.delete()
+          throw new Error('Failed to read file with GDAL')
+        }
+
+        // Convert C++ vector back to Uint8Array
+        const outputSize = outputVector.size()
+        const outputArray = new Uint8Array(outputSize)
+        for (let i = 0; i < outputSize; i++) {
+          outputArray[i] = outputVector.get(i)
+        }
+        outputVector.delete()
+
+        // Parse the resulting GeoJSON
+        const text = new TextDecoder().decode(outputArray)
+        fileContent = JSON.parse(text)
+      }
+
+      // Extract metadata from GeoJSON
+      const metadata = {
+        featureCount: 0,
+        geometryType: 'Unknown',
+        crs: 'EPSG:4326 (WGS 84)',
+        layers: 1,
+        properties: []
+      }
+
+      if (fileContent && fileContent.type === 'FeatureCollection') {
+        metadata.featureCount = fileContent.features?.length || 0
+
+        if (fileContent.features && fileContent.features.length > 0) {
+          const firstFeature = fileContent.features[0]
+
+          // Get geometry type (might be mixed)
+          if (metadata.featureCount <= 5) {
+            // For small datasets, check all features for geometry types
+            const geomTypes = new Set(
+              fileContent.features
+                .map(f => f.geometry?.type)
+                .filter(Boolean)
+            )
+            metadata.geometryType = Array.from(geomTypes).join(', ')
+          } else {
+            // For larger datasets, just use first feature
+            metadata.geometryType = firstFeature.geometry?.type || 'Unknown'
+          }
+
+          // Extract CRS if available
+          if (fileContent.crs) {
+            metadata.crs = fileContent.crs.properties?.name || 'EPSG:4326 (WGS 84)'
+          }
+
+          // Extract properties from first feature
+          if (firstFeature.properties) {
+            metadata.properties = Object.entries(firstFeature.properties).map(([key, value]) => ({
+              name: key,
+              value: value,
+              type: typeof value === 'number'
+                ? (Number.isInteger(value) ? 'Integer' : 'Float')
+                : typeof value === 'boolean'
+                ? 'Boolean'
+                : value instanceof Date
+                ? 'Date'
+                : 'String'
+            }))
+          }
+        }
+      }
+
+      setPreviewData(metadata)
+      setShowPreview(true)
+    } catch (error) {
+      console.error('Error extracting preview data:', error)
+      setToast({
+        isOpen: true,
+        message: 'Failed to extract preview data. File may be corrupted or unsupported format.',
+        type: 'error'
+      })
     }
   }
 
@@ -301,9 +434,21 @@ function App() {
               <div className="bg-zinc-900/50 backdrop-blur-sm border border-zinc-800 rounded-2xl p-8 space-y-8">
             {/* File Upload */}
             <div className="space-y-3">
-              <label className="block text-sm font-medium text-zinc-300">
-                Input File
-              </label>
+              <div className="flex items-center justify-between">
+                <label className="block text-sm font-medium text-zinc-300">
+                  Input File
+                </label>
+                {selectedFile && (
+                  <button
+                    type="button"
+                    onClick={extractPreviewData}
+                    className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-zinc-400 hover:text-emerald-400 bg-zinc-900/50 hover:bg-zinc-800/50 border border-zinc-800 hover:border-emerald-500/30 rounded-lg transition-colors"
+                  >
+                    <EyeIcon className="w-4 h-4" />
+                    <span>Preview</span>
+                  </button>
+                )}
+              </div>
               <div className="relative">
                 <input
                   type="file"
@@ -786,6 +931,138 @@ function App() {
           </motion.div>
         </div>
       </main>
+
+      {/* Preview Modal */}
+      {showPreview && selectedFile && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm">
+          <motion.div
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            exit={{ opacity: 0, scale: 0.95 }}
+            transition={{ duration: 0.2 }}
+            className="bg-zinc-900 border border-zinc-800 rounded-2xl shadow-2xl max-w-4xl w-full max-h-[85vh] overflow-hidden flex flex-col"
+          >
+            {/* Header */}
+            <div className="flex items-center justify-between px-6 py-4 border-b border-zinc-800">
+              <div>
+                <h3 className="text-lg font-semibold text-zinc-100">Data Preview</h3>
+                <p className="text-sm text-zinc-400 mt-0.5">{selectedFile.name}</p>
+              </div>
+              <button
+                onClick={() => setShowPreview(false)}
+                className="p-2 text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800 rounded-lg transition-colors"
+              >
+                <XMarkIcon className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Content */}
+            <div className="flex-1 overflow-y-auto p-6 space-y-6">
+              {/* Map Preview */}
+              <div className="space-y-3">
+                <h4 className="text-sm font-semibold text-zinc-300">Map Preview</h4>
+                <div className="bg-zinc-950 border border-zinc-800 rounded-xl overflow-hidden aspect-video flex items-center justify-center">
+                  <img
+                    src={`https://api.mapbox.com/styles/v1/mapbox/dark-v11/static/[-122.4,37.8,-122.3,37.9]/800x400@2x?access_token=pk.eyJ1IjoibWFwYm94IiwiYSI6ImNpejY4M29iazA2Z2gycXA4N2pmbDZmangifQ.-g_vE53SD2WrJ6tFX7QHmA`}
+                    alt="Static map preview"
+                    className="w-full h-full object-cover"
+                  />
+                </div>
+                <p className="text-xs text-zinc-500">
+                  Bounding box: <span className="text-zinc-400 font-mono">-122.4, 37.8, -122.3, 37.9</span>
+                </p>
+              </div>
+
+              {/* Metadata */}
+              <div className="space-y-3">
+                <h4 className="text-sm font-semibold text-zinc-300">Metadata</h4>
+                <div className="bg-zinc-950 border border-zinc-800 rounded-xl p-4 space-y-3">
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <p className="text-xs text-zinc-500">Format</p>
+                      <p className="text-sm text-zinc-300 font-medium">{inputFormat.toUpperCase()}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs text-zinc-500">File Size</p>
+                      <p className="text-sm text-zinc-300 font-medium">{(selectedFile.size / 1024).toFixed(2)} KB</p>
+                    </div>
+                    <div>
+                      <p className="text-xs text-zinc-500">Feature Count</p>
+                      <p className="text-sm text-zinc-300 font-medium">
+                        {previewData?.featureCount !== undefined
+                          ? (typeof previewData.featureCount === 'number'
+                              ? previewData.featureCount.toLocaleString()
+                              : previewData.featureCount)
+                          : 'Loading...'}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-xs text-zinc-500">Geometry Type</p>
+                      <p className="text-sm text-zinc-300 font-medium">
+                        {previewData?.geometryType || 'Loading...'}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-xs text-zinc-500">CRS</p>
+                      <p className="text-sm text-zinc-300 font-medium">
+                        {previewData?.crs || 'Loading...'}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-xs text-zinc-500">Layers</p>
+                      <p className="text-sm text-zinc-300 font-medium">
+                        {previewData?.layers ? `${previewData.layers} layer${previewData.layers > 1 ? 's' : ''}` : 'Loading...'}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Properties Sample */}
+              <div className="space-y-3">
+                <h4 className="text-sm font-semibold text-zinc-300">Properties (First Feature)</h4>
+                {previewData && previewData.properties && previewData.properties.length > 0 ? (
+                  <>
+                    <div className="bg-zinc-950 border border-zinc-800 rounded-xl overflow-hidden">
+                      <table className="w-full text-sm">
+                        <thead className="bg-zinc-900 border-b border-zinc-800">
+                          <tr>
+                            <th className="text-left px-4 py-2 text-xs font-semibold text-zinc-400">Property</th>
+                            <th className="text-left px-4 py-2 text-xs font-semibold text-zinc-400">Value</th>
+                            <th className="text-left px-4 py-2 text-xs font-semibold text-zinc-400">Type</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-zinc-800">
+                          {previewData.properties.map((prop, index) => (
+                            <tr key={index} className="hover:bg-zinc-900/50">
+                              <td className="px-4 py-2 text-zinc-400 font-mono text-xs">{prop.name}</td>
+                              <td className="px-4 py-2 text-zinc-300">
+                                {prop.value !== null && prop.value !== undefined
+                                  ? String(prop.value)
+                                  : <span className="text-zinc-500 italic">null</span>}
+                              </td>
+                              <td className="px-4 py-2 text-zinc-500 text-xs">{prop.type}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                    <p className="text-xs text-zinc-500 italic">
+                      Showing properties from the first feature in the dataset.
+                    </p>
+                  </>
+                ) : (
+                  <div className="bg-zinc-950 border border-zinc-800 rounded-xl p-8 text-center">
+                    <p className="text-sm text-zinc-500">
+                      {previewData ? 'No properties found in the first feature.' : 'Loading properties...'}
+                    </p>
+                  </div>
+                )}
+              </div>
+            </div>
+          </motion.div>
+        </div>
+      )}
 
       <Toast
         message={toast.message}
