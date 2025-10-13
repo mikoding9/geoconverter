@@ -6,7 +6,7 @@ Transform geospatial vector data between various formats directly in your browse
 
 ## Features
 
-- **9 Supported Formats**: GeoJSON, Shapefile, GeoPackage, KML, GPX, GML, FlatGeobuf, CSV, Parquet
+- **9 Supported Formats**: GeoJSON, Shapefile, GeoPackage, KML, GPX, GML, FlatGeobuf, CSV, PMTiles
 - **CRS Transformation**: Reproject coordinates between different coordinate reference systems (EPSG codes and custom PROJ strings)
 - **Advanced Processing Options**:
   - Geometry filtering by type (Point, LineString, Polygon, etc.)
@@ -113,7 +113,7 @@ pnpm exec playwright install
 | GML | ✓ | ✓ | Geography Markup Language |
 | FlatGeobuf | ✓ | ✓ | Cloud-optimized format |
 | CSV | ✓ | ✓ | WKT or X/Y geometry modes |
-| Parquet | ✓ | ✓ | Columnar format with geometry |
+| PMTiles | ✓ | ✓ | Cloud-optimized tiled format |
 
 ## Project Structure
 

@@ -59,11 +59,11 @@ const SUPPORTED_FORMATS = [
     useCase: 'Spreadsheets, databases, point data'
   },
   {
-    value: 'parquet',
-    label: 'Parquet',
-    ext: '.parquet',
-    description: 'Columnar storage format for big data analytics. Efficient compression and fast queries.',
-    useCase: 'Data analytics, Apache Spark, big data'
+    value: 'pmtiles',
+    label: 'PMTiles',
+    ext: '.pmtiles',
+    description: 'Cloud-optimized format for tiled map data. Single-file archive with efficient HTTP range requests.',
+    useCase: 'Web mapping, tile servers, cloud storage'
   },
 ]
 

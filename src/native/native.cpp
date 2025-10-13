@@ -38,7 +38,7 @@ static std::string getDriverNameFromFormat(const std::string& format) {
     if (f == "gml")         return "GML";
     if (f == "flatgeobuf")  return "FlatGeobuf";
     if (f == "csv")         return "CSV";
-    if (f == "parquet")     return "Parquet";
+    if (f == "pmtiles")     return "PMTiles";
     return "GeoJSON";
 }
 
@@ -52,7 +52,7 @@ static std::string getExtensionFromFormat(const std::string& format) {
     if (f == "gml")         return ".gml";
     if (f == "flatgeobuf")  return ".fgb";
     if (f == "csv")         return ".csv";
-    if (f == "parquet")     return ".parquet";
+    if (f == "pmtiles")     return ".pmtiles";
     return ".geojson";
 }
 

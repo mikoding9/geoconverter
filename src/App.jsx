@@ -108,7 +108,7 @@ function App() {
       'gml': 'gml',
       'fgb': 'flatgeobuf',
       'csv': 'csv',
-      'parquet': 'parquet',
+      'pmtiles': 'pmtiles',
     }
 
     return extensionMap[ext] || 'geojson' // Default to geojson
@@ -392,7 +392,7 @@ function App() {
                   onChange={handleFileChange}
                   className="hidden"
                   id="file-upload"
-                  accept=".json,.geojson,.zip,.gpkg,.kml,.gpx,.gml,.fgb,.csv,.parquet"
+                  accept=".json,.geojson,.zip,.gpkg,.kml,.gpx,.gml,.fgb,.csv,.pmtiles"
                 />
                 <label
                   htmlFor="file-upload"

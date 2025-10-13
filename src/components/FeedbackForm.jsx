@@ -118,7 +118,7 @@ export function FeedbackForm() {
 
           <Field>
             <Label className="text-xs">Attachment (optional)</Label>
-            <div className="relative">
+            <div className="relative mt-2">
               <input
                 type="file"
                 id="feedback-file-upload"

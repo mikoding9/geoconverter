@@ -49,7 +49,7 @@ All notable changes to GeoConverter will be documented in this file.
   - GML
   - FlatGeobuf
   - CSV
-  - Parquet
+  - PMTiles
 - Browser-based conversion using GDAL/OGR via WebAssembly
 - React 19 + Vite + Tailwind CSS v4 modern stack
 - Dark-themed, animated UI with Motion

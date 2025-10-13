@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<gpx version="1.1" creator="GeoConverter Test" xmlns="http://www.topografix.com/GPX/1/1">
+  <metadata>
+    <name>Sample GPX Track</name>
+    <desc>Sample GPX file for testing</desc>
+  </metadata>
+  <wpt lat="-6.2088" lon="106.8456">
+    <name>Sample Waypoint 1</name>
+    <desc>First test waypoint</desc>
+  </wpt>
+  <wpt lat="-6.2188" lon="106.8556">
+    <name>Sample Waypoint 2</name>
+    <desc>Second test waypoint</desc>
+  </wpt>
+  <trk>
+    <name>Sample Track</name>
+    <desc>A test track</desc>
+    <trkseg>
+      <trkpt lat="-6.2088" lon="106.8456">
+        <ele>10</ele>
+      </trkpt>
+      <trkpt lat="-6.2188" lon="106.8556">
+        <ele>15</ele>
+      </trkpt>
+      <trkpt lat="-6.2288" lon="106.8656">
+        <ele>20</ele>
+      </trkpt>
+    </trkseg>
+  </trk>
+</gpx>

@@ -1,0 +1,4 @@
+name,description,WKT,longitude,latitude
+"Sample Point 1","Test point 1","POINT(106.8456 -6.2088)",106.8456,-6.2088
+"Sample Point 2","Test point 2","POINT(106.8556 -6.2188)",106.8556,-6.2188
+"Sample Point 3","Test point 3","POINT(106.8656 -6.2288)",106.8656,-6.2288
