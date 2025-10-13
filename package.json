@@ -1,10 +1,14 @@
 {
-  "name": "cppjs-lib-geoconverter",
+  "name": "geoconverter",
   "version": "1.0.1",
-  "description": "Cpp.js React Vite sample",
-  "homepage": "https://github.com/bugra9/cpp.js/tree/main/packages/cppjs-sample-web-react-vite#readme",
-  "repository": "https://github.com/bugra9/cpp.js.git",
+  "description": "A browser-based geospatial file converter powered by GDAL/OGR and WebAssembly. Transform vector data between GeoJSON, Shapefile, GeoPackage, KML, GPX, GML, FlatGeobuf, CSV, and Parquet formats.",
+  "homepage": "https://github.com/mikoding/geoconverter#readme",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/mikoding/geoconverter.git"
+  },
   "license": "MIT",
+  "author": "mikoding",
   "type": "module",
   "dependencies": {
     "@cpp.js/package-gdal": "^1.0.0",
@@ -34,12 +38,19 @@
     "vite": "^6.0.5"
   },
   "keywords": [
-    "cpp.js-sample",
+    "geospatial",
+    "gis",
+    "gdal",
+    "ogr",
     "webassembly",
-    "bind",
-    "c++",
+    "geojson",
+    "shapefile",
+    "kml",
+    "geopackage",
+    "converter",
     "react",
-    "vite"
+    "vite",
+    "wasm"
   ],
   "scripts": {
     "dev": "vite",
