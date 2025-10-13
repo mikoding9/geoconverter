@@ -23,6 +23,7 @@ import { FeedbackForm } from '@/components/FeedbackForm'
 import { Toast } from '@/components/Toast'
 import Map, { Source, Layer } from 'react-map-gl/maplibre'
 import 'maplibre-gl/dist/maplibre-gl.css'
+import { ParallaxStars } from '@/components/ParallaxStars'
 
 // Common CRS options
 const COMMON_CRS = [
@@ -50,7 +51,8 @@ const GEOMETRY_TYPE_FILTERS = [
 
 function App() {
   const [gdalVersion, setGdalVersion] = useState('Initializing...')
-  const [isLoading, setIsLoading] = useState(true)
+  const [isInitializing, setIsInitializing] = useState(true)
+  const [isConverting, setIsConverting] = useState(false)
   const [selectedFile, setSelectedFile] = useState(null)
   const [inputFormat, setInputFormat] = useState('geojson')
   const [outputFormat, setOutputFormat] = useState('shapefile')
@@ -87,7 +89,7 @@ function App() {
   useEffect(() => {
     initCppJs().then(() => {
       setGdalVersion(Native.getGdalInfo());
-      setIsLoading(false);
+      setIsInitializing(false);
     });
   }, []);
 
@@ -133,7 +135,7 @@ function App() {
   }
 
   const extractPreviewData = async () => {
-    if (!selectedFile || isLoading) return
+    if (!selectedFile || isInitializing) return
 
     // Check if the module is initialized
     if (!Native || !VectorUint8) {
@@ -183,7 +185,7 @@ function App() {
     if (!selectedFile) return
 
     try {
-      setIsLoading(true)
+      setIsConverting(true)
 
       let inputArray
       let actualInputFormat = inputFormat
@@ -288,14 +290,19 @@ function App() {
         type: 'error'
       })
     } finally {
-      setIsLoading(false)
+      setIsConverting(false)
     }
   }
 
   return (
-    <div className="min-h-screen bg-zinc-950 flex flex-col">
+    <div className="min-h-screen flex flex-col relative" style={{
+      background: 'radial-gradient(ellipse at bottom, #18181b 0%, #09090b 100%)'
+    }}>
+      {/* Parallax Star Background */}
+      <ParallaxStars />
+
       {/* Header */}
-      <header className="border-b border-zinc-800/50 backdrop-blur-sm bg-zinc-950/80 sticky top-0 z-10">
+      <header className="border-b border-zinc-700/50 backdrop-blur-md bg-zinc-900/90 sticky top-0 z-10 shadow-lg">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
@@ -308,18 +315,15 @@ function App() {
                 )}
               >
                 <InformationCircleIcon className="w-3.5 h-3.5" />
-                <span>{isLoading ? 'Loading...' : gdalVersion}</span>
+                <span>{isInitializing ? 'Loading...' : gdalVersion}</span>
               </Badge>
-              <p className="text-sm text-zinc-500">
-              Your files never leave your device. All processing happens in your browser using WebAssembly. 
-            </p>
             </div>
           </div>
         </div>
       </header>
 
       {/* Main Content */}
-      <main className="flex-1 px-4 py-8">
+      <main className="flex-1 px-4 py-8 relative z-[1]">
         <div className="max-w-7xl mx-auto">
           {/* Title Section */}
           <div className="text-center mb-8">
@@ -329,7 +333,7 @@ function App() {
               transition={{ duration: 0.6, delay: 0.2 }}
               className="text-3xl md:text-4xl font-light tracking-tight text-zinc-100 mb-3"
             >
-              Convert Vector Files
+              Convert Geospatial Files Instantly
             </motion.h2>
             <motion.p
               initial={{ opacity: 0 }}
@@ -337,7 +341,16 @@ function App() {
               transition={{ duration: 0.6, delay: 0.3 }}
               className="text-zinc-400 text-base"
             >
-              Transform geospatial data between formats, powered by GDAL
+              Transform GIS vector data between formats, powered by GDAL
+            </motion.p>
+            <motion.p
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              transition={{ duration: 0.6, delay: 0.4 }}
+              className="text-sm text-zinc-500 mt-2 flex items-center justify-center gap-1.5"
+            >
+              <span>🔒</span>
+              <span>100% client-side processing. Your files never leave your browser.</span>
             </motion.p>
           </div>
 
@@ -354,7 +367,7 @@ function App() {
               className="lg:col-span-6"
             >
               {/* Conversion Form */}
-              <div className="bg-zinc-900/50 backdrop-blur-sm border border-zinc-800 rounded-2xl p-8 space-y-8">
+              <div className="bg-zinc-900/90 backdrop-blur-md border border-zinc-700/50 rounded-2xl p-8 space-y-8 shadow-2xl">
             {/* File Upload */}
             <div className="space-y-3">
               <div className="flex items-center justify-between">
@@ -365,7 +378,7 @@ function App() {
                   <button
                     type="button"
                     onClick={extractPreviewData}
-                    disabled={isLoading}
+                    disabled={isInitializing}
                     className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-zinc-400 hover:text-emerald-400 bg-zinc-900/50 hover:bg-zinc-800/50 border border-zinc-800 hover:border-emerald-500/30 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:text-zinc-400 disabled:hover:border-zinc-800"
                   >
                     <EyeIcon className="w-4 h-4" />
@@ -395,12 +408,12 @@ function App() {
                   <DocumentArrowUpIcon className="w-8 h-8 text-zinc-400" />
                   <div className="text-center">
                     <p className="text-zinc-300 font-medium">
-                      {selectedFile ? selectedFile.name : 'Choose a file or drag it here'}
+                      {selectedFile ? selectedFile.name : 'Drop your file here or click to browse'}
                     </p>
                     <p className="text-sm text-zinc-500 mt-1">
                       {selectedFile
                         ? `${(selectedFile.size / 1024).toFixed(2)} KB`
-                        : 'Supported formats are listed on the left side'}
+                        : 'GeoJSON, Shapefile, GeoPackage, KML, GPX, and more'}
                     </p>
                   </div>
                 </label>
@@ -465,7 +478,7 @@ function App() {
 
             {/* Advanced Options - Collapsible */}
             {showAdvanced && (
-              <Fieldset className="p-4 bg-zinc-900/30 rounded-xl border border-zinc-800/50 space-y-6">
+              <Fieldset className="p-4 bg-zinc-800/40 rounded-xl border border-zinc-700/50 space-y-6 backdrop-blur-sm">
                 {/* CRS Transformation Section */}
                 <div className="space-y-4">
                   <Text className="font-medium text-zinc-300">
@@ -500,7 +513,7 @@ function App() {
                           />
                         )}
                         <Text className="text-xs text-zinc-500 mt-2">
-                          The CRS of your input data
+                          Source projection (leave empty to auto-detect)
                         </Text>
                       </Field>
 
@@ -527,7 +540,7 @@ function App() {
                           />
                         )}
                         <Text className="text-xs text-zinc-500 mt-2">
-                          The desired output CRS
+                          Transform to this projection (optional)
                         </Text>
                       </Field>
                     </div>
@@ -550,7 +563,7 @@ function App() {
                         <div>
                           <Label>Skip Failures</Label>
                           <Text className="text-xs text-zinc-500 mt-1">
-                            Continue processing even if some features fail
+                            Skip invalid features instead of failing entire conversion
                           </Text>
                         </div>
                         <Switch
@@ -563,7 +576,7 @@ function App() {
                         <div>
                           <Label>Make Valid</Label>
                           <Text className="text-xs text-zinc-500 mt-1">
-                            Repair invalid geometries automatically
+                            Auto-fix self-intersecting polygons and topology errors
                           </Text>
                         </div>
                         <Switch
@@ -624,7 +637,10 @@ function App() {
                         min="0"
                       />
                       <Text className="text-xs text-zinc-500 mt-2">
-                        Simplify geometries using Douglas-Peucker (0 = disabled, try 0.0001-0.01 for web maps)
+                        Reduce geometry vertices using Douglas-Peucker algorithm
+                      </Text>
+                      <Text className="text-xs text-zinc-600 mt-1">
+                        0 = disabled. Try 0.0001–0.01 for web maps, higher values for less detail
                       </Text>
                     </Field>
                   </div>
@@ -680,10 +696,10 @@ function App() {
                           type="text"
                           value={whereClause}
                           onChange={(e) => setWhereClause(e.target.value)}
-                          placeholder='e.g., type IN ("primary","secondary") AND lanes >= 2'
+                          placeholder='population > 100000 OR area > 50'
                         />
                         <Text className="text-xs text-zinc-500 mt-2">
-                          SQL-like filter for attributes (overrides geometry filter)
+                          SQL syntax. Examples: <code className="text-emerald-400 font-mono">type IN ("road","path")</code> or <code className="text-emerald-400 font-mono">area {">"} 1000</code>
                         </Text>
                       </Field>
 
@@ -794,13 +810,18 @@ function App() {
             <Button
               color="emerald"
               onClick={handleConvert}
-              disabled={!selectedFile || isLoading}
+              disabled={!selectedFile || isInitializing || isConverting}
               className="w-full"
             >
-              {isLoading ? (
+              {isInitializing ? (
                 <>
                   <ArrowPathIcon data-slot="icon" className="animate-spin" />
                   <span>Initializing...</span>
+                </>
+              ) : isConverting ? (
+                <>
+                  <ArrowPathIcon data-slot="icon" className="animate-spin" />
+                  <span>Converting...</span>
                 </>
               ) : (
                 <>
@@ -821,7 +842,7 @@ function App() {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             transition={{ duration: 0.6, delay: 0.7 }}
-            className="mt-8 text-center space-y-3"
+            className="mt-8 text-center space-y-2"
           >
             <p className="text-sm text-zinc-500">
               Powered by{' '}
@@ -858,13 +879,13 @@ function App() {
 
       {/* Preview Modal */}
       {showPreview && selectedFile && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md">
           <motion.div
             initial={{ opacity: 0, scale: 0.95 }}
             animate={{ opacity: 1, scale: 1 }}
             exit={{ opacity: 0, scale: 0.95 }}
             transition={{ duration: 0.2 }}
-            className="bg-zinc-900 border border-zinc-800 rounded-2xl shadow-2xl max-w-4xl w-full max-h-[85vh] overflow-hidden flex flex-col"
+            className="bg-zinc-900/95 border border-zinc-700/50 rounded-2xl shadow-2xl max-w-4xl w-full max-h-[85vh] overflow-hidden flex flex-col backdrop-blur-md"
           >
             {/* Header */}
             <div className="flex items-center justify-between px-6 py-4 border-b border-zinc-800">
@@ -885,7 +906,9 @@ function App() {
               {/* Map Preview */}
               {previewData?.bbox && (
                 <div className="space-y-3">
-                  <h4 className="text-sm font-semibold text-zinc-300">Map Preview</h4>
+                  <h4 className="text-sm font-semibold text-zinc-300 flex items-center gap-2">
+                    <span>🗺️</span> Location Preview
+                  </h4>
                   <div className="bg-zinc-950 border border-zinc-800 rounded-xl overflow-hidden aspect-video">
                     <Map
                       initialViewState={{
@@ -946,7 +969,9 @@ function App() {
 
               {/* Metadata */}
               <div className="space-y-3">
-                <h4 className="text-sm font-semibold text-zinc-300">Metadata</h4>
+                <h4 className="text-sm font-semibold text-zinc-300 flex items-center gap-2">
+                  <span>📝</span> File Information
+                </h4>
                 <div className="bg-zinc-950 border border-zinc-800 rounded-xl p-4 space-y-3">
                   <div className="grid grid-cols-2 gap-3">
                     <div>
@@ -991,7 +1016,9 @@ function App() {
 
               {/* Properties Sample */}
               <div className="space-y-3">
-                <h4 className="text-sm font-semibold text-zinc-300">Properties (First Feature)</h4>
+                <h4 className="text-sm font-semibold text-zinc-300 flex items-center gap-2">
+                  <span>🏷️</span> Data Attributes (First Feature)
+                </h4>
                 {previewData && previewData.properties && previewData.properties.length > 0 ? (
                   <>
                     <div className="bg-zinc-950 border border-zinc-800 rounded-xl overflow-hidden">

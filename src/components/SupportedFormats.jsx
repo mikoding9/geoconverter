@@ -77,7 +77,7 @@ export function SupportedFormats() {
       transition={{ duration: 0.6, delay: 0.4 }}
       className="lg:col-span-3"
     >
-      <div className="bg-zinc-900/50 backdrop-blur-sm border border-zinc-800 rounded-xl p-4 sticky top-24">
+      <div className="bg-zinc-900/90 backdrop-blur-md border border-zinc-700/50 rounded-xl p-4 sticky top-24 shadow-2xl">
         <h3 className="text-sm font-semibold text-zinc-100 mb-3">Supported Formats</h3>
         <div className="space-y-1">
           {SUPPORTED_FORMATS.map((format) => (
@@ -103,9 +103,10 @@ export function SupportedFormats() {
                   <p className="text-xs text-zinc-400 leading-relaxed">
                     {format.description}
                   </p>
-                  <div className="pt-1">
-                    <span className="text-xs font-medium text-zinc-500">Use case:</span>
-                    <p className="text-xs text-emerald-400/80 mt-0.5">{format.useCase}</p>
+                  <div className="pt-2 border-t border-zinc-800/30 mt-2">
+                    <p className="text-xs text-emerald-400/80 italic">
+                      💡 {format.useCase}
+                    </p>
                   </div>
                 </motion.div>
               )}
