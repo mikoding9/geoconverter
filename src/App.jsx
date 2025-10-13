@@ -16,18 +16,9 @@ import clsx from 'clsx'
 import JSZip from 'jszip'
 import { initCppJs, Native, VectorUint8 } from '@/native/native.h'
 import { Text } from '@/components/text'
-
-const SUPPORTED_FORMATS = [
-  { value: 'geojson', label: 'GeoJSON', ext: '.geojson' },
-  { value: 'shapefile', label: 'Shapefile (ZIP)', ext: '.zip' },
-  { value: 'geopackage', label: 'GeoPackage', ext: '.gpkg' },
-  { value: 'kml', label: 'KML', ext: '.kml' },
-  { value: 'gpx', label: 'GPX', ext: '.gpx' },
-  { value: 'gml', label: 'GML', ext: '.gml' },
-  { value: 'flatgeobuf', label: 'FlatGeobuf', ext: '.fgb' },
-  { value: 'csv', label: 'CSV', ext: '.csv' },
-  { value: 'parquet', label: 'Parquet', ext: '.parquet' },
-]
+import { SupportedFormats, SUPPORTED_FORMATS } from '@/components/SupportedFormats'
+import { FeedbackForm } from '@/components/FeedbackForm'
+import { Toast } from '@/components/Toast'
 
 // Common CRS options
 const COMMON_CRS = [
@@ -81,6 +72,9 @@ function App() {
   // Format-specific options
   const [geojsonPrecision, setGeojsonPrecision] = useState(7)
   const [csvGeometryMode, setCsvGeometryMode] = useState('WKT') // WKT or XY
+
+  // Toast state
+  const [toast, setToast] = useState({ isOpen: false, message: '', type: 'success' })
 
   useEffect(() => {
     initCppJs().then(() => {
@@ -223,12 +217,20 @@ function App() {
       document.body.removeChild(a)
       URL.revokeObjectURL(url)
 
-      // Show success (you can add a toast notification here)
-      console.log('Conversion successful!')
+      // Show success toast
+      setToast({
+        isOpen: true,
+        message: 'Conversion successful! Your file is downloading.',
+        type: 'success'
+      })
 
     } catch (error) {
       console.error('Conversion error:', error)
-      alert('Conversion failed: ' + error.message)
+      setToast({
+        isOpen: true,
+        message: `Conversion failed: ${error.message}`,
+        type: 'error'
+      })
     } finally {
       setIsLoading(false)
     }
@@ -252,25 +254,24 @@ function App() {
                 <InformationCircleIcon className="w-3.5 h-3.5" />
                 <span>{isLoading ? 'Loading...' : gdalVersion}</span>
               </Badge>
+              <p className="text-sm text-zinc-500">
+              Your files never leave your device. All processing happens in your browser using WebAssembly. 
+            </p>
             </div>
           </div>
         </div>
       </header>
 
       {/* Main Content */}
-      <main className="flex-1 flex items-center justify-center px-4 py-12">
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.6, ease: 'easeOut' }}
-          className="w-full max-w-3xl"
-        >
-          <div className="text-center mb-12">
+      <main className="flex-1 px-4 py-8">
+        <div className="max-w-7xl mx-auto">
+          {/* Title Section */}
+          <div className="text-center mb-8">
             <motion.h2
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               transition={{ duration: 0.6, delay: 0.2 }}
-              className="text-4xl md:text-5xl font-light tracking-tight text-zinc-100 mb-4"
+              className="text-3xl md:text-4xl font-light tracking-tight text-zinc-100 mb-3"
             >
               Convert Vector Files
             </motion.h2>
@@ -278,19 +279,26 @@ function App() {
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               transition={{ duration: 0.6, delay: 0.3 }}
-              className="text-zinc-400 text-lg"
+              className="text-zinc-400 text-base"
             >
               Transform geospatial data between formats, powered by GDAL
             </motion.p>
           </div>
 
-          {/* Conversion Form */}
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.6, delay: 0.4 }}
-            className="bg-zinc-900/50 backdrop-blur-sm border border-zinc-800 rounded-2xl p-8 space-y-8"
-          >
+          {/* 3 Column Layout */}
+          <motion.div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+            {/* Left Sidebar - Supported Formats */}
+            <SupportedFormats />
+
+            {/* Center - Main Converter */}
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.6, delay: 0.5 }}
+              className="lg:col-span-6"
+            >
+              {/* Conversion Form */}
+              <div className="bg-zinc-900/50 backdrop-blur-sm border border-zinc-800 rounded-2xl p-8 space-y-8">
             {/* File Upload */}
             <div className="space-y-3">
               <label className="block text-sm font-medium text-zinc-300">
@@ -323,7 +331,7 @@ function App() {
                     <p className="text-sm text-zinc-500 mt-1">
                       {selectedFile
                         ? `${(selectedFile.size / 1024).toFixed(2)} KB`
-                        : 'Supports GeoJSON, Shapefile, GeoPackage, KML, GPX, GML, FlatGeobuf, CSV, Parquet'}
+                        : 'Supported formats are listed on the left side'}
                     </p>
                   </div>
                 </label>
@@ -732,21 +740,59 @@ function App() {
                 </>
               )}
             </Button>
+              </div>
+            </motion.div>
+
+            {/* Right Sidebar - Feedback Form */}
+            <FeedbackForm />
           </motion.div>
 
           {/* Info Footer */}
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
-            transition={{ duration: 0.6, delay: 0.6 }}
-            className="mt-8 text-center"
+            transition={{ duration: 0.6, delay: 0.7 }}
+            className="mt-8 text-center space-y-3"
           >
             <p className="text-sm text-zinc-500">
-              All processing happens in your browser using WebAssembly. Your files never leave your device.
+              Powered by{' '}
+              <a
+                href="https://gdal.org"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-zinc-400 hover:text-emerald-400 transition-colors underline decoration-dotted"
+              >
+                GDAL
+              </a>
+              {' '}via{' '}
+              <a
+                href="https://github.com/bugra9/cpp.js"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-zinc-400 hover:text-emerald-400 transition-colors underline decoration-dotted"
+              >
+                cpp.js
+              </a>
+              {' '}and{' '}
+              <a
+                href="https://webassembly.org"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-zinc-400 hover:text-emerald-400 transition-colors underline decoration-dotted"
+              >
+                WebAssembly
+              </a>
             </p>
           </motion.div>
-        </motion.div>
+        </div>
       </main>
+
+      <Toast
+        message={toast.message}
+        type={toast.type}
+        isOpen={toast.isOpen}
+        onClose={() => setToast({ ...toast, isOpen: false })}
+      />
     </div>
   )
 }

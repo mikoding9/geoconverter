@@ -1,0 +1,120 @@
+import { useState } from 'react'
+import { motion } from 'motion/react'
+
+const SUPPORTED_FORMATS = [
+  {
+    value: 'geojson',
+    label: 'GeoJSON',
+    ext: '.geojson',
+    description: 'Open standard format for representing geographic features using JSON. Web-friendly and human-readable.',
+    useCase: 'Web mapping, APIs, JavaScript applications'
+  },
+  {
+    value: 'shapefile',
+    label: 'Shapefile',
+    ext: '.zip',
+    description: 'Industry-standard format developed by Esri. Consists of multiple files (.shp, .shx, .dbf, .prj) packaged as ZIP.',
+    useCase: 'Desktop GIS, legacy systems, ArcGIS'
+  },
+  {
+    value: 'geopackage',
+    label: 'GeoPackage',
+    ext: '.gpkg',
+    description: 'Modern SQLite-based format that stores vector and raster data in a single file. Open standard by OGC.',
+    useCase: 'Mobile apps, offline mapping, QGIS'
+  },
+  {
+    value: 'kml',
+    label: 'KML',
+    ext: '.kml',
+    description: 'XML-based format created by Google for Earth and Maps. Supports styling and 3D visualization.',
+    useCase: 'Google Earth, Google Maps, visualization'
+  },
+  {
+    value: 'gpx',
+    label: 'GPX',
+    ext: '.gpx',
+    description: 'GPS Exchange Format for waypoints, routes, and tracks. XML-based and widely supported by GPS devices.',
+    useCase: 'GPS devices, fitness apps, route planning'
+  },
+  {
+    value: 'gml',
+    label: 'GML',
+    ext: '.gml',
+    description: 'Geography Markup Language, an XML grammar for geographic features. OGC standard for data exchange.',
+    useCase: 'Enterprise GIS, standards compliance'
+  },
+  {
+    value: 'flatgeobuf',
+    label: 'FlatGeobuf',
+    ext: '.fgb',
+    description: 'Cloud-native format optimized for streaming and random access. Very fast with spatial index built-in.',
+    useCase: 'Web mapping, large datasets, cloud storage'
+  },
+  {
+    value: 'csv',
+    label: 'CSV',
+    ext: '.csv',
+    description: 'Comma-separated values with geometry as WKT or X/Y columns. Simple format for tabular GIS data.',
+    useCase: 'Spreadsheets, databases, point data'
+  },
+  {
+    value: 'parquet',
+    label: 'Parquet',
+    ext: '.parquet',
+    description: 'Columnar storage format for big data analytics. Efficient compression and fast queries.',
+    useCase: 'Data analytics, Apache Spark, big data'
+  },
+]
+
+export function SupportedFormats() {
+  const [expandedFormat, setExpandedFormat] = useState(null)
+
+  return (
+    <motion.aside
+      initial={{ opacity: 0, x: -20 }}
+      animate={{ opacity: 1, x: 0 }}
+      transition={{ duration: 0.6, delay: 0.4 }}
+      className="lg:col-span-3"
+    >
+      <div className="bg-zinc-900/50 backdrop-blur-sm border border-zinc-800 rounded-xl p-4 sticky top-24">
+        <h3 className="text-sm font-semibold text-zinc-100 mb-3">Supported Formats</h3>
+        <div className="space-y-1">
+          {SUPPORTED_FORMATS.map((format) => (
+            <div key={format.value} className="border-b border-zinc-800/50 last:border-0">
+              <button
+                onClick={() => setExpandedFormat(expandedFormat === format.value ? null : format.value)}
+                className="w-full text-left px-3 py-2 hover:bg-zinc-800/50 rounded transition-colors"
+              >
+                <div className="flex items-center justify-between">
+                  <span className="text-sm font-medium text-zinc-300">{format.label}</span>
+                  <span className="text-zinc-500 text-xs">
+                    {expandedFormat === format.value ? '▼' : '▶'}
+                  </span>
+                </div>
+              </button>
+              {expandedFormat === format.value && (
+                <motion.div
+                  initial={{ height: 0, opacity: 0 }}
+                  animate={{ height: 'auto', opacity: 1 }}
+                  exit={{ height: 0, opacity: 0 }}
+                  className="px-3 pb-3 space-y-2"
+                >
+                  <p className="text-xs text-zinc-400 leading-relaxed">
+                    {format.description}
+                  </p>
+                  <div className="pt-1">
+                    <span className="text-xs font-medium text-zinc-500">Use case:</span>
+                    <p className="text-xs text-emerald-400/80 mt-0.5">{format.useCase}</p>
+                  </div>
+                </motion.div>
+              )}
+            </div>
+          ))}
+        </div>
+      </div>
+    </motion.aside>
+  )
+}
+
+export { SUPPORTED_FORMATS }
