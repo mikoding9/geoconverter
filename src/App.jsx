@@ -21,6 +21,8 @@ import { Text } from '@/components/text'
 import { SupportedFormats, SUPPORTED_FORMATS } from '@/components/SupportedFormats'
 import { FeedbackForm } from '@/components/FeedbackForm'
 import { Toast } from '@/components/Toast'
+import Map, { Source, Layer } from 'react-map-gl/maplibre'
+import 'maplibre-gl/dist/maplibre-gl.css'
 
 // Common CRS options
 const COMMON_CRS = [
@@ -131,117 +133,38 @@ function App() {
   }
 
   const extractPreviewData = async () => {
-    if (!selectedFile) return
+    if (!selectedFile || isLoading) return
+
+    // Check if the module is initialized
+    if (!Native || !VectorUint8) {
+      setToast({
+        isOpen: true,
+        message: 'Please wait for the module to initialize.',
+        type: 'error'
+      })
+      return
+    }
 
     try {
-      let fileContent = null
+      // Read file as ArrayBuffer
+      const arrayBuffer = await selectedFile.arrayBuffer()
+      const inputArray = new Uint8Array(arrayBuffer)
 
-      // For GeoJSON files, parse directly
-      if (inputFormat === 'geojson') {
-        const text = await selectedFile.text()
-        fileContent = JSON.parse(text)
-      } else {
-        // For all other formats, use GDAL to convert to GeoJSON first
-        // This is easier than extracting metadata in C++
-        const arrayBuffer = await selectedFile.arrayBuffer()
-        const inputArray = new Uint8Array(arrayBuffer)
-
-        // Create a C++ vector from the Uint8Array
-        const inputVector = new VectorUint8()
-        for (let i = 0; i < inputArray.length; i++) {
-          inputVector.push_back(inputArray[i])
-        }
-
-        // Convert to GeoJSON using GDAL (with minimal options for speed)
-        const outputVector = Native.convertVector(
-          inputVector,
-          inputFormat,
-          'geojson', // Always convert to GeoJSON for preview
-          '', // No CRS transformation
-          '', // No CRS transformation
-          '', // No layer name
-          '', // No geometry filter
-          false, // skipFailures
-          false, // makeValid
-          false, // keepZ (2D for preview)
-          '', // No where clause
-          '', // No select fields
-          0, // No simplify
-          false, // Don't explode collections for preview
-          false, // preserveFid
-          7, // Default precision
-          'WKT' // CSV mode (not used)
-        )
-
-        inputVector.delete()
-
-        if (!outputVector || outputVector.size() === 0) {
-          if (outputVector) outputVector.delete()
-          throw new Error('Failed to read file with GDAL')
-        }
-
-        // Convert C++ vector back to Uint8Array
-        const outputSize = outputVector.size()
-        const outputArray = new Uint8Array(outputSize)
-        for (let i = 0; i < outputSize; i++) {
-          outputArray[i] = outputVector.get(i)
-        }
-        outputVector.delete()
-
-        // Parse the resulting GeoJSON
-        const text = new TextDecoder().decode(outputArray)
-        fileContent = JSON.parse(text)
+      // Create a C++ vector from the Uint8Array
+      const inputVector = new VectorUint8()
+      for (let i = 0; i < inputArray.length; i++) {
+        inputVector.push_back(inputArray[i])
       }
 
-      // Extract metadata from GeoJSON
-      const metadata = {
-        featureCount: 0,
-        geometryType: 'Unknown',
-        crs: 'EPSG:4326 (WGS 84)',
-        layers: 1,
-        properties: []
-      }
+      // Call native GDAL method to extract metadata
+      const jsonString = Native.getVectorInfo(inputVector, inputFormat)
+      inputVector.delete()
 
-      if (fileContent && fileContent.type === 'FeatureCollection') {
-        metadata.featureCount = fileContent.features?.length || 0
+      // Parse the JSON response
+      const metadata = JSON.parse(jsonString)
 
-        if (fileContent.features && fileContent.features.length > 0) {
-          const firstFeature = fileContent.features[0]
-
-          // Get geometry type (might be mixed)
-          if (metadata.featureCount <= 5) {
-            // For small datasets, check all features for geometry types
-            const geomTypes = new Set(
-              fileContent.features
-                .map(f => f.geometry?.type)
-                .filter(Boolean)
-            )
-            metadata.geometryType = Array.from(geomTypes).join(', ')
-          } else {
-            // For larger datasets, just use first feature
-            metadata.geometryType = firstFeature.geometry?.type || 'Unknown'
-          }
-
-          // Extract CRS if available
-          if (fileContent.crs) {
-            metadata.crs = fileContent.crs.properties?.name || 'EPSG:4326 (WGS 84)'
-          }
-
-          // Extract properties from first feature
-          if (firstFeature.properties) {
-            metadata.properties = Object.entries(firstFeature.properties).map(([key, value]) => ({
-              name: key,
-              value: value,
-              type: typeof value === 'number'
-                ? (Number.isInteger(value) ? 'Integer' : 'Float')
-                : typeof value === 'boolean'
-                ? 'Boolean'
-                : value instanceof Date
-                ? 'Date'
-                : 'String'
-            }))
-          }
-        }
+      if (metadata.error) {
+        throw new Error(metadata.error)
       }
 
       setPreviewData(metadata)
@@ -250,7 +173,7 @@ function App() {
       console.error('Error extracting preview data:', error)
       setToast({
         isOpen: true,
-        message: 'Failed to extract preview data. File may be corrupted or unsupported format.',
+        message: 'Failed to extract preview data. ' + error.message,
         type: 'error'
       })
     }
@@ -442,7 +365,8 @@ function App() {
                   <button
                     type="button"
                     onClick={extractPreviewData}
-                    className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-zinc-400 hover:text-emerald-400 bg-zinc-900/50 hover:bg-zinc-800/50 border border-zinc-800 hover:border-emerald-500/30 rounded-lg transition-colors"
+                    disabled={isLoading}
+                    className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-zinc-400 hover:text-emerald-400 bg-zinc-900/50 hover:bg-zinc-800/50 border border-zinc-800 hover:border-emerald-500/30 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:text-zinc-400 disabled:hover:border-zinc-800"
                   >
                     <EyeIcon className="w-4 h-4" />
                     <span>Preview</span>
@@ -959,19 +883,66 @@ function App() {
             {/* Content */}
             <div className="flex-1 overflow-y-auto p-6 space-y-6">
               {/* Map Preview */}
-              <div className="space-y-3">
-                <h4 className="text-sm font-semibold text-zinc-300">Map Preview</h4>
-                <div className="bg-zinc-950 border border-zinc-800 rounded-xl overflow-hidden aspect-video flex items-center justify-center">
-                  <img
-                    src={`https://api.mapbox.com/styles/v1/mapbox/dark-v11/static/[-122.4,37.8,-122.3,37.9]/800x400@2x?access_token=pk.eyJ1IjoibWFwYm94IiwiYSI6ImNpejY4M29iazA2Z2gycXA4N2pmbDZmangifQ.-g_vE53SD2WrJ6tFX7QHmA`}
-                    alt="Static map preview"
-                    className="w-full h-full object-cover"
-                  />
+              {previewData?.bbox && (
+                <div className="space-y-3">
+                  <h4 className="text-sm font-semibold text-zinc-300">Map Preview</h4>
+                  <div className="bg-zinc-950 border border-zinc-800 rounded-xl overflow-hidden aspect-video">
+                    <Map
+                      initialViewState={{
+                        bounds: [
+                          [previewData.bbox[0], previewData.bbox[1]], // southwest
+                          [previewData.bbox[2], previewData.bbox[3]]  // northeast
+                        ],
+                        fitBoundsOptions: {
+                          padding: 40
+                        }
+                      }}
+                      style={{ width: '100%', height: '100%' }}
+                      mapStyle="https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json"
+                    >
+                      <Source
+                        id="bbox-source"
+                        type="geojson"
+                        data={{
+                          type: 'Feature',
+                          geometry: {
+                            type: 'Polygon',
+                            coordinates: [[
+                              [previewData.bbox[0], previewData.bbox[1]],
+                              [previewData.bbox[2], previewData.bbox[1]],
+                              [previewData.bbox[2], previewData.bbox[3]],
+                              [previewData.bbox[0], previewData.bbox[3]],
+                              [previewData.bbox[0], previewData.bbox[1]]
+                            ]]
+                          }
+                        }}
+                      >
+                        <Layer
+                          id="bbox-fill"
+                          type="fill"
+                          paint={{
+                            'fill-color': '#10b981',
+                            'fill-opacity': 0.1
+                          }}
+                        />
+                        <Layer
+                          id="bbox-outline"
+                          type="line"
+                          paint={{
+                            'line-color': '#10b981',
+                            'line-width': 2
+                          }}
+                        />
+                      </Source>
+                    </Map>
+                  </div>
+                  <p className="text-xs text-zinc-500">
+                    Bounding box: <span className="text-zinc-400 font-mono">
+                      {previewData.bbox.map(v => v.toFixed(6)).join(', ')}
+                    </span>
+                  </p>
                 </div>
-                <p className="text-xs text-zinc-500">
-                  Bounding box: <span className="text-zinc-400 font-mono">-122.4, 37.8, -122.3, 37.9</span>
-                </p>
-              </div>
+              )}
 
               {/* Metadata */}
               <div className="space-y-3">

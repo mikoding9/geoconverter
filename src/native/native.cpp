@@ -162,6 +162,189 @@ static std::string whereFromFilter(const std::string& filter) {
 }
 
 // ----------------- main API -----------------
+std::string Native::getVectorInfo(
+    const std::vector<uint8_t>& inputData,
+    const std::string& inputFormat
+) {
+    GDALAllRegister();
+
+    CPLPushErrorHandler(ErrHandler);
+    CPLErrorReset();
+
+    std::string result = "{}";
+    VSILFILE* fpIn = nullptr;
+
+    try {
+        // Materialize input in /vsimem
+        std::string inputPath;
+        const std::string inFmt = toLower(inputFormat);
+
+        if (inFmt == "shapefile") {
+            const std::string zipPath = "/vsimem/preview_input.zip";
+            fpIn = VSIFileFromMemBuffer(zipPath.c_str(),
+                                        const_cast<GByte*>(inputData.data()),
+                                        static_cast<vsi_l_offset>(inputData.size()),
+                                        FALSE);
+            if (!fpIn) throw std::runtime_error("Failed to create input ZIP file");
+            VSIFCloseL(fpIn); fpIn = nullptr;
+
+            const std::string zipVsi = "/vsizip/" + zipPath;
+            inputPath = pickShpInsideZip(zipVsi);
+            if (inputPath.empty()) throw std::runtime_error("No .shp found in input ZIP");
+        } else {
+            std::string inputExt = getExtensionFromFormat(inFmt);
+            if (inputExt == ".zip") inputExt = ".dat";
+            inputPath = "/vsimem/preview_input" + inputExt;
+            fpIn = VSIFileFromMemBuffer(inputPath.c_str(),
+                                        const_cast<GByte*>(inputData.data()),
+                                        static_cast<vsi_l_offset>(inputData.size()),
+                                        FALSE);
+            if (!fpIn) throw std::runtime_error("Failed to create input virtual file");
+            VSIFCloseL(fpIn); fpIn = nullptr;
+        }
+
+        // Open dataset
+        GDALDataset* poDS = (GDALDataset*)GDALOpenEx(
+            inputPath.c_str(), GDAL_OF_VECTOR | GDAL_OF_READONLY, nullptr, nullptr, nullptr
+        );
+        if (!poDS) throw std::runtime_error("Failed to open input dataset");
+
+        // Extract metadata using native GDAL API
+        std::string json = "{";
+
+        // Layer count
+        int layerCount = poDS->GetLayerCount();
+        json += "\"layers\":" + std::to_string(layerCount) + ",";
+
+        // Feature count from first layer
+        GIntBig featureCount = 0;
+        std::string geometryType = "Unknown";
+        std::string crs = "Unknown";
+        std::string properties = "[]";
+
+        if (layerCount > 0) {
+            OGRLayer* poLayer = poDS->GetLayer(0);
+            if (poLayer) {
+                // Feature count
+                featureCount = poLayer->GetFeatureCount();
+                json += "\"featureCount\":" + std::to_string(featureCount) + ",";
+
+                // Geometry type from layer definition
+                OGRwkbGeometryType geomType = poLayer->GetGeomType();
+                geometryType = OGRGeometryTypeToName(geomType);
+                json += "\"geometryType\":\"" + geometryType + "\",";
+
+                // CRS/SRS
+                OGRSpatialReference* srs = poLayer->GetSpatialRef();
+                if (srs) {
+                    const char* authName = srs->GetAuthorityName(nullptr);
+                    const char* authCode = srs->GetAuthorityCode(nullptr);
+                    if (authName && authCode) {
+                        crs = std::string(authName) + ":" + std::string(authCode);
+                    } else {
+                        char* wkt = nullptr;
+                        srs->exportToWkt(&wkt);
+                        if (wkt) {
+                            crs = std::string(wkt).substr(0, 50); // Truncate for brevity
+                            CPLFree(wkt);
+                        }
+                    }
+                }
+                json += "\"crs\":\"" + crs + "\",";
+
+                // Bounding box (extent)
+                OGREnvelope extent;
+                if (poLayer->GetExtent(&extent, TRUE) == OGRERR_NONE) {
+                    json += "\"bbox\":[";
+                    json += std::to_string(extent.MinX) + ",";
+                    json += std::to_string(extent.MinY) + ",";
+                    json += std::to_string(extent.MaxX) + ",";
+                    json += std::to_string(extent.MaxY);
+                    json += "],";
+                }
+
+                // Properties from first feature
+                poLayer->ResetReading();
+                OGRFeature* poFeature = poLayer->GetNextFeature();
+                if (poFeature) {
+                    properties = "[";
+                    OGRFeatureDefn* poFDefn = poLayer->GetLayerDefn();
+                    int fieldCount = poFDefn->GetFieldCount();
+
+                    for (int i = 0; i < fieldCount; i++) {
+                        OGRFieldDefn* poFieldDefn = poFDefn->GetFieldDefn(i);
+                        std::string fieldName = poFieldDefn->GetNameRef();
+                        OGRFieldType fieldType = poFieldDefn->GetType();
+
+                        // Get field value
+                        std::string fieldValue = "null";
+                        std::string fieldTypeName = "String";
+
+                        if (!poFeature->IsFieldNull(i) && poFeature->IsFieldSet(i)) {
+                            switch (fieldType) {
+                                case OFTInteger:
+                                    fieldValue = std::to_string(poFeature->GetFieldAsInteger(i));
+                                    fieldTypeName = "Integer";
+                                    break;
+                                case OFTInteger64:
+                                    fieldValue = std::to_string(poFeature->GetFieldAsInteger64(i));
+                                    fieldTypeName = "Integer";
+                                    break;
+                                case OFTReal:
+                                    fieldValue = std::to_string(poFeature->GetFieldAsDouble(i));
+                                    fieldTypeName = "Float";
+                                    break;
+                                case OFTString:
+                                    fieldValue = "\"" + std::string(poFeature->GetFieldAsString(i)) + "\"";
+                                    fieldTypeName = "String";
+                                    break;
+                                case OFTDate:
+                                case OFTDateTime:
+                                    fieldValue = "\"" + std::string(poFeature->GetFieldAsString(i)) + "\"";
+                                    fieldTypeName = "Date";
+                                    break;
+                                default:
+                                    fieldValue = "\"" + std::string(poFeature->GetFieldAsString(i)) + "\"";
+                                    fieldTypeName = "String";
+                                    break;
+                            }
+                        }
+
+                        if (i > 0) properties += ",";
+                        properties += "{";
+                        properties += "\"name\":\"" + fieldName + "\",";
+                        properties += "\"value\":" + fieldValue + ",";
+                        properties += "\"type\":\"" + fieldTypeName + "\"";
+                        properties += "}";
+                    }
+                    properties += "]";
+
+                    OGRFeature::DestroyFeature(poFeature);
+                }
+            }
+        }
+
+        json += "\"properties\":" + properties;
+        json += "}";
+
+        result = json;
+
+        // Cleanup
+        GDALClose(poDS);
+        if (inFmt == "shapefile") {
+            VSIUnlink("/vsimem/preview_input.zip");
+        } else {
+            VSIUnlink(inputPath.c_str());
+        }
+
+    } catch (const std::exception& ex) {
+        result = "{\"error\":\"" + std::string(ex.what()) + "\"}";
+    }
+
+    CPLPopErrorHandler();
+    return result;
+}
+
 std::vector<uint8_t> Native::convertVector(
     const std::vector<uint8_t>& inputData,
     const std::string& inputFormat,
