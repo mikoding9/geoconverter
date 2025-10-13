@@ -226,9 +226,9 @@ std::vector<uint8_t> Native::convertVector(
         const std::string driver = getDriverNameFromFormat(outputFormat);
         const std::string outExt = getExtensionFromFormat(outputFormat);
 
-        // Special case SHP: write *directly* into a zip with one or more entries
+        // Special case SHP: write to individual directory, then collect all files
         if (driver == "ESRI Shapefile") {
-            const std::string zipPath = "/vsimem/output.zip";
+            const std::string baseDir = "/vsimem/shp_output";
 
             const int nL = poSrcDS->GetLayerCount();
             for (int i = 0; i < nL; i++) {
@@ -249,10 +249,9 @@ std::vector<uint8_t> Native::convertVector(
                     GIntBig cnt = countGeomWhere(poSrcDS, srcLayerName, p.where);
                     if (cnt <= 0) continue;
 
-                    // /vsizip//vsimem/output.zip/<name>.shp
                     const std::string baseName =
                         (layerName.empty() ? srcLayerName : layerName) + std::string(p.suffix);
-                    const std::string outEntry = "/vsizip" + zipPath + "/" + baseName + ".shp";
+                    const std::string outPath = baseDir + "/" + baseName + ".shp";
 
                     std::vector<std::string> args = {
                         "-f", "ESRI Shapefile",
@@ -281,24 +280,55 @@ std::vector<uint8_t> Native::convertVector(
                     pushDriverLCO(args, driver, geojsonPrecision, csvGeometryMode);
                     pushCrsArgs(args, poSrcDS, sourceCrs, targetCrs);
 
-                    GDALDataset* dst = runVectorTranslate(poSrcDS, outEntry, args);
+                    GDALDataset* dst = runVectorTranslate(poSrcDS, outPath, args);
                     if (!dst) {
-                        // keep going to next part; error collected in eb.s
                         continue;
                     }
                     GDALClose(dst);
                 }
             }
 
+            // Now collect all files from the directory and create a proper ZIP
+            // Using GDAL's /vsizip/ in write mode
+            char** fileList = VSIReadDir(baseDir.c_str());
+            if (!fileList) {
+                throw std::runtime_error("No shapefile components created");
+            }
+
+            // Create a proper ZIP by copying files into it
+            const std::string zipPath = "/vsimem/output.zip";
+            for (int i = 0; fileList[i] != nullptr; i++) {
+                std::string fileName = fileList[i];
+                if (fileName == "." || fileName == "..") continue;
+
+                std::string srcPath = baseDir + "/" + fileName;
+                std::string dstPath = "/vsizip/" + zipPath + "/" + fileName;
+
+                // Read source file
+                vsi_l_offset nBytes = 0;
+                GByte* fileData = VSIGetMemFileBuffer(srcPath.c_str(), &nBytes, FALSE);
+                if (fileData && nBytes > 0) {
+                    // Write to ZIP
+                    VSILFILE* fpOut = VSIFOpenL(dstPath.c_str(), "wb");
+                    if (fpOut) {
+                        VSIFWriteL(fileData, 1, nBytes, fpOut);
+                        VSIFCloseL(fpOut);
+                    }
+                }
+                VSIUnlink(srcPath.c_str());
+            }
+            CSLDestroy(fileList);
+            VSIRmdirRecursive(baseDir.c_str());
+
             // collect the resulting ZIP bytes
             vsi_l_offset zipLen = 0;
-            GByte* zipBuf = VSIGetMemFileBuffer("/vsimem/output.zip", &zipLen, FALSE);
+            GByte* zipBuf = VSIGetMemFileBuffer(zipPath.c_str(), &zipLen, FALSE);
             if (zipBuf && zipLen > 0) {
                 result.assign(zipBuf, zipBuf + zipLen);
             } else {
                 throw std::runtime_error("Failed to create shapefile ZIP");
             }
-            VSIUnlink("/vsimem/output.zip");
+            VSIUnlink(zipPath.c_str());
         }
         else {
             // Non-SHP: single output file in /vsimem
