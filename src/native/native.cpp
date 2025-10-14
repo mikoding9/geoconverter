@@ -6,9 +6,13 @@
 #include <ogr_spatialref.h>
 #include <cpl_vsi.h>
 #include <cpl_string.h>
+#include <cpl_error.h>
 #include <gdalwarper.h>
 #include <gdal_utils.h>
 #include <algorithm>
+#include <memory>
+#include <vector>
+#include <string>
 
 std::string Native::getGdalInfo() {
     GDALAllRegister();
@@ -28,9 +32,43 @@ static std::string toLower(std::string s) {
     return s;
 }
 
+static thread_local std::string g_lastError;
+static thread_local std::string g_lastInfo;
+
+static void resetLastError() {
+    g_lastError.clear();
+    g_lastInfo.clear();
+    CPLErrorReset();
+}
+
+static void recordErrorMessage(const char* msg) {
+    if (msg && *msg) {
+        g_lastError = msg;
+    }
+}
+
+static void recordInfoMessage(const char* msg) {
+    if (msg && *msg) {
+        g_lastInfo = msg;
+    }
+}
+
+static void ensureLastErrorMessage() {
+    if (!g_lastError.empty()) {
+        return;
+    }
+    const char* cplMsg = CPLGetLastErrorMsg();
+    if (cplMsg && *cplMsg) {
+        g_lastError = cplMsg;
+    } else if (!g_lastInfo.empty()) {
+        g_lastError = g_lastInfo;
+    }
+}
+
 static std::string getDriverNameFromFormat(const std::string& format) {
     auto f = toLower(format);
     if (f == "geojson")     return "GeoJSON";
+    if (f == "topojson")    return "TopoJSON";
     if (f == "shapefile")   return "ESRI Shapefile";
     if (f == "geopackage")  return "GPKG";
     if (f == "kml")         return "KML";
@@ -40,12 +78,14 @@ static std::string getDriverNameFromFormat(const std::string& format) {
     if (f == "csv")         return "CSV";
     if (f == "pmtiles")     return "PMTiles";
     if (f == "mbtiles")     return "MBTiles";
+    if (f == "dxf")         return "DXF";
     return "GeoJSON";
 }
 
 static std::string getExtensionFromFormat(const std::string& format) {
     auto f = toLower(format);
     if (f == "geojson")     return ".geojson";
+    if (f == "topojson")    return ".topojson";
     if (f == "shapefile")   return ".zip";      // we will return a ZIP containing the SHP set
     if (f == "geopackage")  return ".gpkg";
     if (f == "kml")         return ".kml";
@@ -55,12 +95,17 @@ static std::string getExtensionFromFormat(const std::string& format) {
     if (f == "csv")         return ".csv";
     if (f == "pmtiles")     return ".pmtiles";
     if (f == "mbtiles")     return ".mbtiles";
+    if (f == "dxf")         return ".dxf";
     return ".geojson";
 }
 
-// Simple error handler without user data (compatible with older GDAL)
-static void ErrHandler(CPLErr, int, const char*) {
-    // Errors are collected by GDAL's default mechanism
+// Simple error handler: capture both errors and warnings
+static void ErrHandler(CPLErr classType, int, const char* msg) {
+    if (classType == CE_Failure || classType == CE_Fatal) {
+        recordErrorMessage(msg);
+    } else if (classType == CE_Warning || classType == CE_Debug) {
+        recordInfoMessage(msg);
+    }
 }
 
 // find a .shp inside /vsizip//vsimem/xxx.zip (first match)
@@ -108,6 +153,7 @@ static GIntBig countGeomWhere(GDALDataset* ds, const std::string& layerName, con
 }
 
 // decide CRS args: transform or assign
+// User-provided CRS always takes priority over file's embedded CRS
 static void pushCrsArgs(std::vector<std::string>& args,
                         GDALDataset* src,
                         const std::string& sourceCrs,
@@ -115,24 +161,43 @@ static void pushCrsArgs(std::vector<std::string>& args,
 {
     const bool haveSrc = !sourceCrs.empty();
     const bool haveDst = !targetCrs.empty();
+
+    // Case 1: User specified both source and target CRS
     if (haveSrc && haveDst && sourceCrs != targetCrs) {
+        // Transform: override file's CRS with user's source CRS, then reproject to target
         args.insert(args.end(), {"-s_srs", sourceCrs, "-t_srs", targetCrs});
         return;
     }
+
+    // Case 2: User specified only source CRS (no target)
+    if (haveSrc && !haveDst) {
+        // Assign/override: tell GDAL the data is in this CRS (user knows better than auto-detect)
+        args.insert(args.end(), {"-a_srs", sourceCrs});
+        return;
+    }
+
+    // Case 3: User specified only target CRS (no source)
     if (haveDst && !haveSrc) {
-        // Only assign if layers have no SRS — heuristic: check first layer
+        // Check if file has embedded CRS
         OGRLayer* L0 = src->GetLayerCount() > 0 ? src->GetLayer(0) : nullptr;
         OGRSpatialReference* srs = L0 ? L0->GetSpatialRef() : nullptr;
+
         if (srs == nullptr) {
+            // No CRS in file: assign the target CRS
             args.insert(args.end(), {"-a_srs", targetCrs});
+        } else {
+            // File has CRS: transform from auto-detected to target
+            args.insert(args.end(), {"-t_srs", targetCrs});
         }
     }
+
+    // Case 4: No user CRS specified - let GDAL auto-detect (do nothing)
 }
 
 static void pushDriverLCO(std::vector<std::string>& args, const std::string& driver, int geojsonPrecision, const std::string& csvGeometryMode) {
     if (driver == "ESRI Shapefile") {
         args.insert(args.end(), {"-lco", "ENCODING=UTF-8"});
-    } else if (driver == "GeoJSON") {
+    } else if (driver == "GeoJSON" || driver == "TopoJSON") {
         args.insert(args.end(), {"-lco", "WRITE_BBOX=YES"});
         args.insert(args.end(), {"-lco", "COORDINATE_PRECISION=" + std::to_string(geojsonPrecision)});
     } else if (driver == "GPKG") {
@@ -163,15 +228,123 @@ static std::string whereFromFilter(const std::string& filter) {
     return std::string();
 }
 
+static bool transformExtentToWgs84(const OGREnvelope& extent,
+                                   const std::string& sourceCrs,
+                                   double& minX,
+                                   double& minY,
+                                   double& maxX,
+                                   double& maxY,
+                                   std::string& debugInfo)
+{
+    if (sourceCrs.empty()) {
+        debugInfo += "Source CRS is empty; ";
+        return false;
+    }
+
+    debugInfo += "Using source CRS: " + sourceCrs + "; ";
+
+    OGRSpatialReference srcSrs;
+    OGRErr err = srcSrs.SetFromUserInput(sourceCrs.c_str());
+    if (err != OGRERR_NONE) {
+        debugInfo += "SetFromUserInput failed (error " + std::to_string(err) + "); ";
+        return false;
+    }
+    srcSrs.SetAxisMappingStrategy(OAMS_TRADITIONAL_GIS_ORDER);
+
+    OGRSpatialReference wgs84;
+    wgs84.SetWellKnownGeogCS("WGS84");
+    wgs84.SetAxisMappingStrategy(OAMS_TRADITIONAL_GIS_ORDER);
+
+    if (srcSrs.IsSame(&wgs84)) {
+        debugInfo += "Already WGS84, skipping; ";
+        return false;
+    }
+
+    struct SamplePoint {
+        double x;
+        double y;
+    };
+
+    const int steps = 8;
+    std::vector<SamplePoint> points;
+    points.reserve((steps + 1) * 4);
+    auto addEdge = [&](double x0, double y0, double x1, double y1) {
+        for (int i = 0; i <= steps; ++i) {
+            double t = static_cast<double>(i) / steps;
+            points.push_back({x0 + (x1 - x0) * t, y0 + (y1 - y0) * t});
+        }
+    };
+
+    addEdge(extent.MinX, extent.MinY, extent.MaxX, extent.MinY); // bottom
+    addEdge(extent.MaxX, extent.MinY, extent.MaxX, extent.MaxY); // right
+    addEdge(extent.MaxX, extent.MaxY, extent.MinX, extent.MaxY); // top
+    addEdge(extent.MinX, extent.MaxY, extent.MinX, extent.MinY); // left
+
+    std::unique_ptr<OGRCoordinateTransformation, decltype(&OCTDestroyCoordinateTransformation)> transform(
+        OGRCreateCoordinateTransformation(&srcSrs, &wgs84),
+        OCTDestroyCoordinateTransformation
+    );
+
+    if (!transform) {
+        debugInfo += "OGRCreateCoordinateTransformation failed; ";
+        return false;
+    }
+
+    for (size_t i = 0; i < points.size(); ++i) {
+        double x = points[i].x;
+        double y = points[i].y;
+        if (!transform->Transform(1, &x, &y)) {
+            debugInfo += "OGR transform failed at point " + std::to_string(i) + "; ";
+            return false;
+        }
+        points[i].x = x;
+        points[i].y = y;
+    }
+
+    auto minMaxX = std::minmax_element(points.begin(), points.end(),
+        [](const SamplePoint& a, const SamplePoint& b) { return a.x < b.x; });
+    auto minMaxY = std::minmax_element(points.begin(), points.end(),
+        [](const SamplePoint& a, const SamplePoint& b) { return a.y < b.y; });
+    minX = minMaxX.first->x;
+    maxX = minMaxX.second->x;
+    minY = minMaxY.first->y;
+    maxY = minMaxY.second->y;
+
+    debugInfo += "OGR reprojection successful; ";
+    return true;
+}
+
 // ----------------- main API -----------------
 std::string Native::getVectorInfo(
     const std::vector<uint8_t>& inputData,
-    const std::string& inputFormat
+    const std::string& inputFormat,
+    const std::string& sourceCrs
 ) {
     GDALAllRegister();
+    resetLastError();
+
+    // Set PROJ data path for WebAssembly/Emscripten environment
+    // Try common paths where cpp.js might mount the PROJ data
+    const char* projPaths[] = {
+        "/proj",
+        "/usr/share/proj",
+        "/data/proj",
+        "/opt/proj/share/proj",
+        nullptr
+    };
+
+    for (const char** path = projPaths; *path != nullptr; ++path) {
+        VSIStatBufL statBuf;
+        if (VSIStatL(*path, &statBuf) == 0) {
+            CPLSetConfigOption("PROJ_LIB", *path);
+            break;
+        }
+    }
+
+    // Enable debug output
+    CPLSetConfigOption("CPL_DEBUG", "ON");
 
     CPLPushErrorHandler(ErrHandler);
-    CPLErrorReset();
 
     std::string result = "{}";
     VSILFILE* fpIn = nullptr;
@@ -236,32 +409,130 @@ std::string Native::getVectorInfo(
                 geometryType = OGRGeometryTypeToName(geomType);
                 json += "\"geometryType\":\"" + geometryType + "\",";
 
-                // CRS/SRS
+                // CRS/SRS - use user-provided sourceCrs if available, otherwise detect
                 OGRSpatialReference* srs = poLayer->GetSpatialRef();
-                if (srs) {
+                std::unique_ptr<OGRSpatialReference> userSrs;
+
+                std::string debugInfo = "";
+
+                // Debug: Check PROJ_LIB setting
+                const char* projLib = CPLGetConfigOption("PROJ_LIB", nullptr);
+                if (projLib) {
+                    debugInfo += "PROJ_LIB=" + std::string(projLib) + "; ";
+                } else {
+                    debugInfo += "PROJ_LIB not set; ";
+                }
+
+                // If user provided a source CRS, use it for reprojection
+                if (!sourceCrs.empty()) {
+                    debugInfo += "User provided sourceCrs: " + sourceCrs + "; ";
+                    userSrs = std::make_unique<OGRSpatialReference>();
+
+                    OGRErr err = OGRERR_FAILURE;
+
+                    // Try to parse EPSG code and use importFromEPSG
+                    if (sourceCrs.find("EPSG:") == 0 || sourceCrs.find("epsg:") == 0) {
+                        try {
+                            int epsgCode = std::stoi(sourceCrs.substr(5));
+                            debugInfo += "Trying importFromEPSG(" + std::to_string(epsgCode) + "); ";
+                            err = userSrs->importFromEPSG(epsgCode);
+                            if (err != OGRERR_NONE) {
+                                debugInfo += "importFromEPSG failed (error " + std::to_string(err) + "); ";
+                            }
+                        } catch (...) {
+                            debugInfo += "Failed to parse EPSG code; ";
+                        }
+                    }
+
+                    // If importFromEPSG failed or wasn't tried, try SetFromUserInput
+                    if (err != OGRERR_NONE) {
+                        debugInfo += "Trying SetFromUserInput; ";
+                        err = userSrs->SetFromUserInput(sourceCrs.c_str());
+                        if (err != OGRERR_NONE) {
+                            debugInfo += "SetFromUserInput failed (error " + std::to_string(err) + "); ";
+                        }
+                    }
+
+                    if (err == OGRERR_NONE) {
+                        userSrs->SetAxisMappingStrategy(OAMS_TRADITIONAL_GIS_ORDER);
+                        srs = userSrs.get();
+                        crs = sourceCrs; // Display what user selected
+                        debugInfo += "Successfully set user CRS; ";
+                    } else {
+                        debugInfo += "GDAL CRS methods failed, but will try PROJ for transform; ";
+                        // Don't reset - we'll still use sourceCrs for PROJ transformation
+                        // even though GDAL couldn't create an OGRSpatialReference from it
+                        crs = sourceCrs; // Display what user selected
+                        userSrs.reset();
+                    }
+                } else {
+                    debugInfo += "No sourceCrs provided; ";
+                }
+
+                // If no user CRS was provided at all, use layer's CRS
+                if (sourceCrs.empty() && srs) {
                     const char* authName = srs->GetAuthorityName(nullptr);
                     const char* authCode = srs->GetAuthorityCode(nullptr);
                     if (authName && authCode) {
                         crs = std::string(authName) + ":" + std::string(authCode);
+                        debugInfo += "Using layer CRS: " + crs + "; ";
                     } else {
                         char* wkt = nullptr;
                         srs->exportToWkt(&wkt);
                         if (wkt) {
                             crs = std::string(wkt).substr(0, 50); // Truncate for brevity
+                            debugInfo += "Using layer CRS from WKT; ";
                             CPLFree(wkt);
                         }
                     }
                 }
                 json += "\"crs\":\"" + crs + "\",";
+                json += "\"debugCrs\":\"" + debugInfo + "\",";
 
                 // Bounding box (extent)
                 OGREnvelope extent;
                 if (poLayer->GetExtent(&extent, TRUE) == OGRERR_NONE) {
-                    json += "\"bbox\":[";
+                    // Store original bbox for debugging
+                    json += "\"bboxOriginal\":[";
                     json += std::to_string(extent.MinX) + ",";
                     json += std::to_string(extent.MinY) + ",";
                     json += std::to_string(extent.MaxX) + ",";
                     json += std::to_string(extent.MaxY);
+                    json += "],";
+
+                    double bboxMinX = extent.MinX;
+                    double bboxMinY = extent.MinY;
+                    double bboxMaxX = extent.MaxX;
+                    double bboxMaxY = extent.MaxY;
+
+                    // Determine which CRS to use for transformation
+                    // Prefer user-provided sourceCrs, otherwise use layer's CRS
+                    std::string transformSourceCrs = sourceCrs.empty() ? crs : sourceCrs;
+
+                    std::string transformDebug = "";
+                    const bool bboxReprojected = transformExtentToWgs84(
+                        extent,
+                        transformSourceCrs,
+                        bboxMinX,
+                        bboxMinY,
+                        bboxMaxX,
+                        bboxMaxY,
+                        transformDebug
+                    );
+
+                    if (bboxReprojected) {
+                        json += "\"bboxReprojected\":true,";
+                    } else {
+                        json += "\"bboxReprojected\":false,";
+                    }
+
+                    json += "\"debugTransform\":\"" + transformDebug + "\",";
+
+                    json += "\"bbox\":[";
+                    json += std::to_string(bboxMinX) + ",";
+                    json += std::to_string(bboxMinY) + ",";
+                    json += std::to_string(bboxMaxX) + ",";
+                    json += std::to_string(bboxMaxY);
                     json += "],";
                 }
 
@@ -340,6 +611,10 @@ std::string Native::getVectorInfo(
         }
 
     } catch (const std::exception& ex) {
+        ensureLastErrorMessage();
+        if (g_lastError.empty() && ex.what()) {
+            g_lastError = ex.what();
+        }
         result = "{\"error\":\"" + std::string(ex.what()) + "\"}";
     }
 
@@ -369,12 +644,13 @@ std::vector<uint8_t> Native::convertVector(
     GDALAllRegister();
     std::vector<uint8_t> result;
 
+    resetLastError();
     CPLPushErrorHandler(ErrHandler);
-    CPLErrorReset();
 
     // ---- 1) Materialize input in /vsimem and open
     std::string inputPath;
     VSILFILE* fpIn = nullptr;
+    std::string driver;
 
     try {
         const std::string inFmt = toLower(inputFormat);
@@ -408,7 +684,7 @@ std::vector<uint8_t> Native::convertVector(
         if (!poSrcDS) throw std::runtime_error("Failed to open input dataset");
 
         // ---- 2) Decide driver and output path
-        const std::string driver = getDriverNameFromFormat(outputFormat);
+        driver = getDriverNameFromFormat(outputFormat);
         const std::string outExt = getExtensionFromFormat(outputFormat);
 
         // Special case SHP: write to individual directory, then collect all files
@@ -593,12 +869,41 @@ std::vector<uint8_t> Native::convertVector(
             VSIUnlink(inputPath.c_str());
         }
 
+        if (result.empty()) {
+            ensureLastErrorMessage();
+            if (g_lastError.empty()) {
+                g_lastError = "GDAL returned an empty dataset";
+            }
+            if (!sourceCrs.empty() || !targetCrs.empty()) {
+                g_lastError += " (source CRS: " + (sourceCrs.empty() ? std::string("auto") : sourceCrs)
+                             + ", target CRS: " + (targetCrs.empty() ? std::string("auto") : targetCrs) + ")";
+            }
+            if (!driver.empty()) {
+                g_lastError += " driver=" + driver;
+            }
+        }
+
     } catch (const std::exception& ex) {
         // For now, keep contract: empty vector indicates failure.
-        (void)ex;
+        ensureLastErrorMessage();
+        if (g_lastError.empty() && ex.what()) {
+            g_lastError = ex.what();
+        }
         result.clear();
     }
 
     CPLPopErrorHandler();
+
+    if (result.empty()) {
+        ensureLastErrorMessage();
+        if (g_lastError.empty()) {
+            g_lastError = "No output produced by GDAL";
+        }
+    }
+
     return result;
+}
+
+std::string Native::getLastError() {
+    return g_lastError;
 }

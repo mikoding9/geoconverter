@@ -10,7 +10,8 @@ public:
     static std::string getGdalInfo();
     static std::string getVectorInfo(
         const std::vector<uint8_t>& inputData,
-        const std::string& inputFormat
+        const std::string& inputFormat,
+        const std::string& sourceCrs
     );
     static std::vector<uint8_t> convertVector(
         const std::vector<uint8_t>& inputData,
@@ -31,6 +32,7 @@ public:
         int geojsonPrecision,
         const std::string& csvGeometryMode
     );
+    static std::string getLastError();
 };
 
 #endif

@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { motion } from 'motion/react'
+import clsx from 'clsx'
 
 const SUPPORTED_FORMATS = [
   {
@@ -8,6 +9,13 @@ const SUPPORTED_FORMATS = [
     ext: '.geojson',
     description: 'Open standard format for representing geographic features using JSON. Web-friendly and human-readable.',
     useCase: 'Web mapping, APIs, JavaScript applications'
+  },
+  {
+    value: 'topojson',
+    label: 'TopoJSON',
+    ext: '.topojson',
+    description: 'Topology-preserving extension of GeoJSON that shares borders between features to reduce file size.',
+    useCase: 'Web visualizations, D3.js, compact boundary datasets'
   },
   {
     value: 'shapefile',
@@ -52,6 +60,13 @@ const SUPPORTED_FORMATS = [
     useCase: 'Web mapping, large datasets, cloud storage'
   },
   {
+    value: 'dxf',
+    label: 'DXF',
+    ext: '.dxf',
+    description: 'AutoCAD Drawing Exchange Format for CAD interoperability. Great for sharing GIS features with engineering teams.',
+    useCase: 'CAD/GIS workflows, infrastructure planning, survey data'
+  },
+  {
     value: 'csv',
     label: 'CSV',
     ext: '.csv',
@@ -74,15 +89,17 @@ const SUPPORTED_FORMATS = [
   },
 ]
 
-export function SupportedFormats() {
+export function SupportedFormats({ className }) {
   const [expandedFormat, setExpandedFormat] = useState(null)
+
+  const wrapperClass = className ?? 'lg:col-span-3'
 
   return (
     <motion.aside
       initial={{ opacity: 0, x: -20 }}
       animate={{ opacity: 1, x: 0 }}
       transition={{ duration: 0.6, delay: 0.4 }}
-      className="lg:col-span-3"
+      className={clsx(wrapperClass)}
     >
       <div className="bg-zinc-900/90 backdrop-blur-md border border-zinc-700/50 rounded-xl p-4 sticky top-24 shadow-2xl">
         <h3 className="text-sm font-semibold text-zinc-100 mb-3">Supported Formats</h3>

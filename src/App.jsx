@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { Badge } from '@/components/badge'
 import { Button } from '@/components/button'
 import { Select } from '@/components/select'
@@ -30,14 +30,18 @@ import { ParallaxStars } from '@/components/ParallaxStars'
 // Common CRS options
 const COMMON_CRS = [
   { value: '', label: 'No transformation' },
-  { value: 'EPSG:4326', label: 'WGS 84 (EPSG:4326) - GPS coordinates' },
-  { value: 'EPSG:3857', label: 'Web Mercator (EPSG:3857) - Web maps' },
-  { value: 'EPSG:32633', label: 'UTM Zone 33N (EPSG:32633)' },
-  { value: 'EPSG:32634', label: 'UTM Zone 34N (EPSG:32634)' },
-  { value: 'EPSG:2154', label: 'Lambert 93 (EPSG:2154) - France' },
-  { value: 'EPSG:27700', label: 'British National Grid (EPSG:27700)' },
-  { value: 'EPSG:5514', label: 'S-JTSK Krovak (EPSG:5514) - Czech' },
-  { value: 'custom', label: 'Custom CRS...' },
+  { value: '+proj=longlat +datum=WGS84 +no_defs +type=crs', label: 'WGS 84 (Lat/Lon)' },
+  { value: '+proj=merc +lon_0=0 +k=1 +x_0=0 +y_0=0 +datum=WGS84 +units=m +no_defs +type=crs', label: 'Web Mercator (Pseudo-Mercator)' },
+  { value: '+proj=utm +zone=33 +datum=WGS84 +units=m +no_defs +type=crs', label: 'WGS 84 / UTM Zone 33N' },
+  { value: '+proj=lcc +lat_1=49 +lat_2=44 +lat_0=46.5 +lon_0=3 +x_0=700000 +y_0=6600000 +ellps=GRS80 +units=m +no_defs +type=crs', label: 'Lambert 93 (France)' },
+  { value: '+proj=tmerc +lat_0=49 +lon_0=-2 +k=0.9996012717 +x_0=400000 +y_0=-100000 +ellps=airy +towgs84=446.448,-125.157,542.06,0.1502,0.247,0.8421,-20.4894 +units=m +no_defs +type=crs', label: 'British National Grid' },
+  { value: 'custom', label: 'Custom PROJ string...' },
+]
+
+const EPSG_REGEX = /^epsg:(\d{1,6})$/i
+const PROJ_ENDPOINTS = [
+  (code) => `https://spatialreference.org/ref/epsg/${code}/proj4.txt`,
+  (code) => `https://epsg.io/${code}.proj4`,
 ]
 
 // Geometry type filter options
@@ -84,12 +88,25 @@ function App() {
   // Toast state
   const [toast, setToast] = useState({ isOpen: false, message: '', type: 'success' })
 
+  // Cached CRS lookups
+  const projLookupCache = useRef({})
+  const [resolvingSourceCrs, setResolvingSourceCrs] = useState(false)
+  const [resolvingTargetCrs, setResolvingTargetCrs] = useState(false)
+
   // Preview state
   const [showPreview, setShowPreview] = useState(false)
   const [previewData, setPreviewData] = useState(null)
 
   // Help dialog state
   const [showHelp, setShowHelp] = useState(false)
+
+  const debugTransformMessage = previewData?.debugTransform || ''
+  const showBboxReprojectionFailure =
+    previewData?.bboxReprojected === false &&
+    Boolean(previewData?.bboxOriginal) &&
+    debugTransformMessage &&
+    !debugTransformMessage.includes('Already WGS84') &&
+    !debugTransformMessage.includes('Source CRS is empty')
 
   useEffect(() => {
     initCppJs().then(() => {
@@ -105,6 +122,7 @@ function App() {
     const extensionMap = {
       'json': 'geojson',
       'geojson': 'geojson',
+      'topojson': 'topojson',
       'zip': 'shapefile',
       'shp': 'shapefile',
       'gpkg': 'geopackage',
@@ -115,6 +133,7 @@ function App() {
       'csv': 'csv',
       'pmtiles': 'pmtiles',
       'mbtiles': 'mbtiles',
+      'dxf': 'dxf',
     }
 
     return extensionMap[ext] || 'geojson' // Default to geojson
@@ -164,8 +183,11 @@ function App() {
         inputVector.push_back(inputArray[i])
       }
 
-      // Call native GDAL method to extract metadata
-      const jsonString = Native.getVectorInfo(inputVector, inputFormat)
+      // Get final source CRS (use custom if 'custom' is selected)
+      const finalSourceCrs = sourceCrs === 'custom' ? customSourceCrs : sourceCrs
+
+      // Call native GDAL method to extract metadata with user-selected CRS
+      const jsonString = Native.getVectorInfo(inputVector, inputFormat, finalSourceCrs)
       inputVector.delete()
 
       // Parse the JSON response
@@ -185,6 +207,85 @@ function App() {
         type: 'error'
       })
     }
+  }
+
+  const resolveEpsgCode = async (rawValue, scope) => {
+    if (!rawValue) return
+    const match = rawValue.trim().match(EPSG_REGEX)
+    if (!match) return
+
+    const code = match[1]
+    const cacheKey = code
+    const isSource = scope === 'source'
+    const currentlyResolving = isSource ? resolvingSourceCrs : resolvingTargetCrs
+    if (currentlyResolving) return
+
+    const setValue = isSource ? setCustomSourceCrs : setCustomTargetCrs
+    const setResolving = isSource ? setResolvingSourceCrs : setResolvingTargetCrs
+
+    setResolving(true)
+
+    try {
+      let projString = projLookupCache.current[cacheKey]
+      const fromCache = Boolean(projString)
+
+      if (!projString) {
+        let lastError = null
+
+        for (const buildUrl of PROJ_ENDPOINTS) {
+          const url = buildUrl(code)
+          try {
+            const response = await fetch(url, { mode: 'cors' })
+            if (!response.ok) {
+              lastError = new Error(`HTTP ${response.status}`)
+              continue
+            }
+            const text = (await response.text()).trim()
+            if (!text || !text.startsWith('+proj')) {
+              lastError = new Error('Unexpected response format')
+              continue
+            }
+            projString = text
+            break
+          } catch (error) {
+            lastError = error instanceof Error ? error : new Error(String(error))
+          }
+        }
+
+        if (!projString) {
+          throw lastError || new Error('Unable to fetch PROJ definition')
+        }
+
+        projLookupCache.current[cacheKey] = projString
+      }
+
+      setValue(projString)
+
+      if (!fromCache) {
+        setToast({
+          isOpen: true,
+          message: `Resolved EPSG:${code} to PROJ string.`,
+          type: 'success'
+        })
+      }
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error)
+      setToast({
+        isOpen: true,
+        message: `Failed to resolve EPSG:${code}. ${errorMessage}`,
+        type: 'error'
+      })
+    } finally {
+      setResolving(false)
+    }
+  }
+
+  const handleSourceCustomBlur = () => {
+    resolveEpsgCode(customSourceCrs, 'source')
+  }
+
+  const handleTargetCustomBlur = () => {
+    resolveEpsgCode(customTargetCrs, 'target')
   }
 
   const handleConvert = async () => {
@@ -251,7 +352,9 @@ function App() {
       if (!outputVector || outputVector.size() === 0) {
         inputVector.delete()
         if (outputVector) outputVector.delete()
-        throw new Error('Conversion failed - output is empty')
+        console.log( Native.getLastError())
+        const lastError = typeof Native.getLastError === 'function' ? Native.getLastError() : ''
+        throw new Error(lastError || 'Conversion failed - output is empty')
       }
 
       // Convert C++ vector back to Uint8Array
@@ -289,10 +392,11 @@ function App() {
       })
 
     } catch (error) {
-      console.error('Conversion error:', error)
+      const nativeError = typeof Native.getLastError === 'function' ? Native.getLastError() : ''
+      console.error('Conversion error:', error, nativeError ? `Native: ${nativeError}` : '')
       setToast({
         isOpen: true,
-        message: `Conversion failed: ${error.message}`,
+        message: `Conversion failed: ${nativeError || error.message}`,
         type: 'error'
       })
     } finally {
@@ -370,8 +474,25 @@ function App() {
 
           {/* 3 Column Layout */}
           <motion.div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-            {/* Left Sidebar - Supported Formats */}
-            <SupportedFormats />
+            {/* Left Sidebar - Updates & Supported Formats */}
+            <div className="lg:col-span-3 space-y-4">
+              <motion.aside
+                initial={{ opacity: 0, x: -20 }}
+                animate={{ opacity: 1, x: 0 }}
+                transition={{ duration: 0.6, delay: 0.4 }}
+                className="bg-emerald-500/10 border border-emerald-500/30 rounded-xl px-4 py-4 text-sm text-emerald-200 shadow-2xl"
+              >
+                <div className="relative">
+                  <InformationCircleIcon className="-top-1 -right-1 absolute w-5 h-5 mt-0.5 text-emerald-300" />
+                    <p className="font-medium text-emerald-100 mb-1">Latest update</p>
+                    <p className="text-emerald-200/90 leading-relaxed">
+                      Coordinate reprojection is now fixed for both the preview map and the main conversion workflow.
+                    </p>
+                </div>
+              </motion.aside>
+
+              <SupportedFormats className="w-full" />
+            </div>
 
             {/* Center - Main Converter */}
             <motion.div
@@ -392,7 +513,7 @@ function App() {
                   <button
                     type="button"
                     onClick={extractPreviewData}
-                    disabled={isInitializing}
+                    disabled={isInitializing || resolvingSourceCrs || resolvingTargetCrs}
                     className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-zinc-400 hover:text-emerald-400 bg-zinc-900/50 hover:bg-zinc-800/50 border border-zinc-800 hover:border-emerald-500/30 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:text-zinc-400 disabled:hover:border-zinc-800"
                   >
                     <EyeIcon className="w-4 h-4" />
@@ -522,12 +643,16 @@ function App() {
                             type="text"
                             value={customSourceCrs}
                             onChange={(e) => setCustomSourceCrs(e.target.value)}
-                            placeholder="e.g., EPSG:4326 or +proj=longlat..."
+                            onBlur={handleSourceCustomBlur}
+                            placeholder="e.g., epsg:4326 or +proj=longlat +datum=WGS84 +no_defs"
                             className="mt-2"
+                            disabled={resolvingSourceCrs}
                           />
                         )}
                         <Text className="text-xs text-zinc-500 mt-2">
-                          Source projection (leave empty to auto-detect)
+                          {resolvingSourceCrs
+                            ? 'Resolving EPSG code...'
+                            : 'Source projection (PROJ string; leave empty to auto-detect)'}
                         </Text>
                       </Field>
 
@@ -549,12 +674,16 @@ function App() {
                             type="text"
                             value={customTargetCrs}
                             onChange={(e) => setCustomTargetCrs(e.target.value)}
-                            placeholder="e.g., EPSG:3857 or +proj=merc..."
+                            onBlur={handleTargetCustomBlur}
+                            placeholder="e.g., epsg:3857 or +proj=merc +lon_0=0 +k=1 +datum=WGS84"
                             className="mt-2"
+                            disabled={resolvingTargetCrs}
                           />
                         )}
                         <Text className="text-xs text-zinc-500 mt-2">
-                          Transform to this projection (optional)
+                          {resolvingTargetCrs
+                            ? 'Resolving EPSG code...'
+                            : 'Transform to this projection (PROJ string; optional)'}
                         </Text>
                       </Field>
                     </div>
@@ -973,11 +1102,26 @@ function App() {
                       </Source>
                     </Map>
                   </div>
-                  <p className="text-xs text-zinc-500">
-                    Bounding box: <span className="text-zinc-400 font-mono">
-                      {previewData.bbox.map(v => v.toFixed(6)).join(', ')}
-                    </span>
-                  </p>
+                  <div className="space-y-1">
+                    <p className="text-xs text-zinc-500">
+                      Bounding box: <span className="text-zinc-400 font-mono">
+                        {previewData.bbox.map(v => v.toFixed(6)).join(', ')}
+                      </span>
+                      {previewData.bboxReprojected === true && (
+                        <span className="ml-2 text-emerald-400">(reprojected to WGS84 for display)</span>
+                      )}
+                      {showBboxReprojectionFailure && (
+                        <span className="ml-2 text-red-400">(reprojection failed - showing original)</span>
+                      )}
+                    </p>
+                    {previewData.bboxOriginal && (
+                      <p className="text-xs text-zinc-600">
+                        Original bbox: <span className="font-mono">
+                          {previewData.bboxOriginal.map(v => v.toFixed(2)).join(', ')}
+                        </span>
+                      </p>
+                    )}
+                  </div>
                 </div>
               )}
 

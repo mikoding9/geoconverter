@@ -6,7 +6,7 @@ Transform geospatial vector data between various formats directly in your browse
 
 ## Features
 
-- **9 Supported Formats**: GeoJSON, Shapefile, GeoPackage, KML, GPX, GML, FlatGeobuf, CSV, PMTiles
+- **12 Supported Formats**: GeoJSON, TopoJSON, Shapefile, GeoPackage, KML, GPX, GML, FlatGeobuf, CSV, DXF, PMTiles, MBTiles
 - **CRS Transformation**: Reproject coordinates between different coordinate reference systems (EPSG codes and custom PROJ strings)
 - **Advanced Processing Options**:
   - Geometry filtering by type (Point, LineString, Polygon, etc.)
@@ -106,6 +106,7 @@ pnpm exec playwright install
 | Format | Input | Output | Notes |
 |--------|-------|--------|-------|
 | GeoJSON | ✓ | ✓ | Configurable precision, bbox support |
+| TopoJSON | ✓ | ✓ | Topology-preserving boundary sharing |
 | Shapefile (ZIP) | ✓ | ✓ | Auto geometry splitting, UTF-8 encoding |
 | GeoPackage | ✓ | ✓ | SQLite-based, spatial indexing |
 | KML | ✓ | ✓ | Google Earth format |
@@ -113,7 +114,9 @@ pnpm exec playwright install
 | GML | ✓ | ✓ | Geography Markup Language |
 | FlatGeobuf | ✓ | ✓ | Cloud-optimized format |
 | CSV | ✓ | ✓ | WKT or X/Y geometry modes |
+| DXF | ✓ | ✓ | CAD-friendly exchange format |
 | PMTiles | ✓ | ✓ | Cloud-optimized tiled format |
+| MBTiles | ✓ | ✓ | SQLite-based tiles for offline use |
 
 ## Project Structure
 

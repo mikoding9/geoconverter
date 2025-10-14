@@ -123,7 +123,7 @@ export function HelpDialog({ isOpen, onClose }) {
                     </div>
                     <div className="bg-zinc-950/50 border border-zinc-800 rounded-lg p-3">
                       <h4 className="font-semibold text-zinc-200 text-sm mb-1">🌍 CRS Transformation</h4>
-                      <p className="text-xs text-zinc-400">Reproject coordinates between coordinate systems (EPSG codes & custom PROJ strings)</p>
+                      <p className="text-xs text-zinc-400">Reproject coordinates between systems using the built-in PROJ strings, auto-resolve EPSG codes, or supply your own custom definition</p>
                     </div>
                     <div className="bg-zinc-950/50 border border-zinc-800 rounded-lg p-3">
                       <h4 className="font-semibold text-zinc-200 text-sm mb-1">🎯 Smart Filtering</h4>
