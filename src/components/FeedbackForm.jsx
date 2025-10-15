@@ -120,11 +120,11 @@ export function FeedbackForm({ className = '' }) {
           <button
             type="button"
             onClick={() => setShowOptionalFields(!showOptionalFields)}
-            className="flex items-center justify-start space-x-2 w-full text-sm text-zinc-400 hover:text-zinc-200 transition-colors"
+            className="flex items-center gap-2 text-sm text-zinc-400 hover:text-zinc-300 transition-colors"
             aria-expanded={showOptionalFields}
           >
             <span>{showOptionalFields ? '▼' : '▶'}</span>
-            <span className="font-medium text-zinc-300">Optional details</span>
+            <span>Optional details</span>
           </button>
 
           {showOptionalFields && (

@@ -395,7 +395,7 @@ function App() {
       if (!outputVector || outputVector.size() === 0) {
         inputVector.delete()
         if (outputVector) outputVector.delete()
-        console.log( Native.getLastError())
+        console.log(Native.getLastError())
         const lastError = typeof Native.getLastError === 'function' ? Native.getLastError() : ''
         throw new Error(lastError || 'Conversion failed - output is empty')
       }
@@ -481,490 +481,488 @@ function App() {
             >
               {/* Conversion Form */}
               <div className="bg-zinc-900/90 backdrop-blur-md border border-zinc-700/50 rounded-2xl p-8 space-y-8 shadow-2xl">
-            {/* File Upload */}
-            <div className="space-y-3">
-              <div className="flex items-center justify-between">
-                <label className="block text-sm font-medium text-zinc-300">
-                  Input File
-                </label>
-                {selectedFile && (
-                  <button
-                    type="button"
-                    onClick={extractPreviewData}
-                    disabled={isInitializing || resolvingSourceCrs || resolvingTargetCrs}
-                    className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-zinc-400 hover:text-emerald-400 bg-zinc-900/50 hover:bg-zinc-800/50 border border-zinc-800 hover:border-emerald-500/30 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:text-zinc-400 disabled:hover:border-zinc-800"
-                  >
-                    <EyeIcon className="w-4 h-4" />
-                    <span>Preview</span>
-                  </button>
-                )}
-              </div>
-              <div className="relative">
-                <input
-                  type="file"
-                  onChange={handleFileChange}
-                  className="hidden"
-                  id="file-upload"
-                  accept={INPUT_ACCEPT_ATTRIBUTE}
-                />
-                <label
-                  htmlFor="file-upload"
-                  className={clsx(
-                    'flex items-center justify-center gap-3 px-6 py-12',
-                    'border-2 border-dashed rounded-xl cursor-pointer',
-                    'transition-all duration-200',
-                    selectedFile
-                      ? 'border-emerald-500/50 bg-emerald-500/5'
-                      : 'border-zinc-700 hover:border-zinc-600 bg-zinc-900/30'
-                  )}
+                {/* File Upload */}
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <label className="block text-sm font-medium text-zinc-300">
+                      Input File
+                    </label>
+                    <button
+                      type="button"
+                      onClick={extractPreviewData}
+                      disabled={!selectedFile|| isInitializing || resolvingSourceCrs || resolvingTargetCrs}
+                      className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-zinc-400 hover:text-emerald-400 bg-zinc-900/50 hover:bg-zinc-800/50 border border-zinc-800 hover:border-emerald-500/30 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:text-zinc-400 disabled:hover:border-zinc-800"
+                    >
+                      <EyeIcon className="w-4 h-4" />
+                      <span>Preview</span>
+                    </button>
+                  </div>
+                  <div className="relative">
+                    <input
+                      type="file"
+                      onChange={handleFileChange}
+                      className="hidden"
+                      id="file-upload"
+                      accept={INPUT_ACCEPT_ATTRIBUTE}
+                    />
+                    <label
+                      htmlFor="file-upload"
+                      className={clsx(
+                        'flex items-center justify-center gap-3 px-6 py-12',
+                        'border-2 border-dashed rounded-xl cursor-pointer',
+                        'transition-all duration-200',
+                        selectedFile
+                          ? 'border-emerald-500/50 bg-emerald-500/5'
+                          : 'border-zinc-700 hover:border-zinc-600 bg-zinc-900/30'
+                      )}
+                    >
+                      <DocumentArrowUpIcon className="w-8 h-8 text-zinc-400" />
+                      <div className="text-center">
+                        <p className="text-zinc-300 font-medium">
+                          {selectedFile ? selectedFile.name : 'Drop your file here or click to browse'}
+                        </p>
+                        <p className="text-sm text-zinc-500 mt-1">
+                          {selectedFile
+                            ? `${(selectedFile.size / 1024).toFixed(2)} KB`
+                            : 'GeoJSON, Shapefile, GeoPackage, KML, GPX, and more'}
+                        </p>
+                      </div>
+                    </label>
+                  </div>
+                </div>
+
+                {/* Format Selectors */}
+                <FieldGroup>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    {/* Input Format */}
+                    <Field>
+                      <Label>
+                        Input Format
+                        {formatAutoDetected && (
+                          <span className="ml-2 text-xs text-emerald-400 font-normal">
+                            (auto-detected)
+                          </span>
+                        )}
+                      </Label>
+                      <Select
+                        value={inputFormat}
+                        onChange={(e) => {
+                          setInputFormat(e.target.value)
+                          setFormatAutoDetected(false)
+                        }}
+                        className={formatAutoDetected ? 'ring-2 ring-emerald-500/30' : ''}
+                      >
+                        {READABLE_FORMATS.map((format) => {
+                          const optionLabel = format.capabilities.write
+                            ? format.label
+                            : `${format.label} (input only)`
+                          return (
+                            <option key={format.value} value={format.value}>
+                              {optionLabel}
+                            </option>
+                          )
+                        })}
+                      </Select>
+                    </Field>
+
+                    {/* Output Format */}
+                    <Field>
+                      <Label>Output Format</Label>
+                      <Select
+                        value={outputFormat}
+                        onChange={(e) => setOutputFormat(e.target.value)}
+                      >
+                        {WRITABLE_FORMATS.map((format) => {
+                          const optionLabel = format.capabilities.read
+                            ? format.label
+                            : `${format.label} (output only)`
+                          return (
+                            <option key={format.value} value={format.value}>
+                              {optionLabel}
+                            </option>
+                          )
+                        })}
+                      </Select>
+                    </Field>
+                  </div>
+                </FieldGroup>
+
+                {/* Advanced Options Toggle */}
+                <button
+                  type="button"
+                  onClick={() => setShowAdvanced(!showAdvanced)}
+                  className="flex items-center gap-2 text-sm text-zinc-400 hover:text-zinc-300 transition-colors"
                 >
-                  <DocumentArrowUpIcon className="w-8 h-8 text-zinc-400" />
-                  <div className="text-center">
-                    <p className="text-zinc-300 font-medium">
-                      {selectedFile ? selectedFile.name : 'Drop your file here or click to browse'}
-                    </p>
-                    <p className="text-sm text-zinc-500 mt-1">
-                      {selectedFile
-                        ? `${(selectedFile.size / 1024).toFixed(2)} KB`
-                        : 'GeoJSON, Shapefile, GeoPackage, KML, GPX, and more'}
-                    </p>
-                  </div>
-                </label>
-              </div>
-            </div>
+                  <span>{showAdvanced ? '▼' : '▶'}</span>
+                  <span>Advanced Options</span>
+                </button>
 
-            {/* Format Selectors */}
-            <FieldGroup>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                {/* Input Format */}
-                <Field>
-                  <Label>
-                    Input Format
-                    {formatAutoDetected && (
-                      <span className="ml-2 text-xs text-emerald-400 font-normal">
-                        (auto-detected)
-                      </span>
-                    )}
-                  </Label>
-                  <Select
-                    value={inputFormat}
-                    onChange={(e) => {
-                      setInputFormat(e.target.value)
-                      setFormatAutoDetected(false)
-                    }}
-                    className={formatAutoDetected ? 'ring-2 ring-emerald-500/30' : ''}
-                  >
-                    {READABLE_FORMATS.map((format) => {
-                      const optionLabel = format.capabilities.write
-                        ? format.label
-                        : `${format.label} (input only)`
-                      return (
-                        <option key={format.value} value={format.value}>
-                          {optionLabel}
-                        </option>
-                      )
-                    })}
-                  </Select>
-                </Field>
-
-                {/* Output Format */}
-                <Field>
-                  <Label>Output Format</Label>
-                  <Select
-                    value={outputFormat}
-                    onChange={(e) => setOutputFormat(e.target.value)}
-                  >
-                    {WRITABLE_FORMATS.map((format) => {
-                      const optionLabel = format.capabilities.read
-                        ? format.label
-                        : `${format.label} (output only)`
-                      return (
-                        <option key={format.value} value={format.value}>
-                          {optionLabel}
-                        </option>
-                      )
-                    })}
-                  </Select>
-                </Field>
-              </div>
-            </FieldGroup>
-
-            {/* Advanced Options Toggle */}
-            <button
-              type="button"
-              onClick={() => setShowAdvanced(!showAdvanced)}
-              className="flex items-center gap-2 text-sm text-zinc-400 hover:text-zinc-300 transition-colors"
-            >
-              <span>{showAdvanced ? '▼' : '▶'}</span>
-              <span>Advanced Options</span>
-            </button>
-
-            {/* Advanced Options - Collapsible */}
-            {showAdvanced && (
-              <div className="relative">
-                <Fieldset className="p-4 bg-zinc-800/40 rounded-xl border border-zinc-700/50 space-y-6 backdrop-blur-sm max-h-[70vh] overflow-y-auto pr-2">
-                  {/* CRS Transformation Section */}
-                  <div className="space-y-4">
-                    <Text className="font-medium text-zinc-300">
-                      Coordinate Reference System (CRS) Transformation
-                    </Text>
-                    <Text className="text-sm text-zinc-500">
-                      Reproject coordinates between different coordinate systems
-                    </Text>
-
-                    <FieldGroup>
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                        {/* Source CRS */}
-                        <Field>
-                          <Label>Source CRS</Label>
-                          <Select
-                            value={sourceCrs}
-                            onChange={(e) => setSourceCrs(e.target.value)}
-                          >
-                            {COMMON_CRS.map((crs) => (
-                              <option key={crs.value} value={crs.value}>
-                                {crs.label}
-                              </option>
-                            ))}
-                          </Select>
-                          {sourceCrs === 'custom' && (
-                            <Input
-                              type="text"
-                              value={customSourceCrs}
-                              onChange={(e) => setCustomSourceCrs(e.target.value)}
-                              onBlur={handleSourceCustomBlur}
-                              placeholder="e.g., epsg:4326 or +proj=longlat +datum=WGS84 +no_defs"
-                              className="mt-2"
-                              disabled={resolvingSourceCrs}
-                            />
-                          )}
-                          <Text className="text-xs text-zinc-500 mt-2">
-                            {resolvingSourceCrs
-                              ? 'Resolving EPSG code...'
-                              : 'Source projection (PROJ string; leave empty to auto-detect)'}
-                          </Text>
-                        </Field>
-
-                        {/* Target CRS */}
-                        <Field>
-                          <Label>Target CRS</Label>
-                          <Select
-                            value={targetCrs}
-                            onChange={(e) => setTargetCrs(e.target.value)}
-                          >
-                            {COMMON_CRS.map((crs) => (
-                              <option key={crs.value} value={crs.value}>
-                                {crs.label}
-                              </option>
-                            ))}
-                          </Select>
-                          {targetCrs === 'custom' && (
-                            <Input
-                              type="text"
-                              value={customTargetCrs}
-                              onChange={(e) => setCustomTargetCrs(e.target.value)}
-                              onBlur={handleTargetCustomBlur}
-                              placeholder="e.g., epsg:3857 or +proj=merc +lon_0=0 +k=1 +datum=WGS84"
-                              className="mt-2"
-                              disabled={resolvingTargetCrs}
-                            />
-                          )}
-                          <Text className="text-xs text-zinc-500 mt-2">
-                            {resolvingTargetCrs
-                              ? 'Resolving EPSG code...'
-                              : 'Transform to this projection (PROJ string; optional)'}
-                          </Text>
-                        </Field>
-                      </div>
-                    </FieldGroup>
-                  </div>
-
-                  {/* Processing Options */}
-                  <div className="space-y-4 pt-4 border-t border-zinc-800">
-                    <Text className="font-medium text-zinc-300">
-                      Processing Options
-                    </Text>
-                    <Text className="text-sm text-zinc-500">
-                      Control how features are processed during conversion
-                    </Text>
-
-                    <div className="space-y-4">
-                      {/* Toggle Options */}
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <Field className="flex items-center justify-between">
-                          <div>
-                            <Label>Skip Failures</Label>
-                            <Text className="text-xs text-zinc-500 mt-1">
-                              Skip invalid features instead of failing entire conversion
-                            </Text>
-                          </div>
-                          <Switch
-                            checked={skipFailures}
-                            onChange={setSkipFailures}
-                          />
-                        </Field>
-
-                        <Field className="flex items-center justify-between">
-                          <div>
-                            <Label>Make Valid</Label>
-                            <Text className="text-xs text-zinc-500 mt-1">
-                              Auto-fix self-intersecting polygons and topology errors
-                            </Text>
-                          </div>
-                          <Switch
-                            checked={makeValid}
-                            onChange={setMakeValid}
-                          />
-                        </Field>
-
-                        <Field className="flex items-center justify-between">
-                          <div>
-                            <Label>Keep Z Dimension</Label>
-                            <Text className="text-xs text-zinc-500 mt-1">
-                              Preserve 3D coordinates (default: 2D)
-                            </Text>
-                          </div>
-                          <Switch
-                            checked={keepZ}
-                            onChange={setKeepZ}
-                          />
-                        </Field>
-
-                        <Field className="flex items-center justify-between">
-                          <div>
-                            <Label>Explode Collections</Label>
-                            <Text className="text-xs text-zinc-500 mt-1">
-                              Split GeometryCollections into simple features
-                            </Text>
-                          </div>
-                          <Switch
-                            checked={explodeCollections}
-                            onChange={setExplodeCollections}
-                          />
-                        </Field>
-
-                        <Field className="flex items-center justify-between">
-                          <div>
-                            <Label>Preserve FID</Label>
-                            <Text className="text-xs text-zinc-500 mt-1">
-                              Keep original feature IDs (for stable references)
-                            </Text>
-                          </div>
-                          <Switch
-                            checked={preserveFid}
-                            onChange={setPreserveFid}
-                          />
-                        </Field>
-                      </div>
-
-                      {/* Simplify */}
-                      <Field>
-                        <Label>Simplify Tolerance (optional)</Label>
-                        <Input
-                          type="number"
-                          value={simplifyTolerance}
-                          onChange={(e) => setSimplifyTolerance(parseFloat(e.target.value) || 0)}
-                          placeholder="0"
-                          step="0.0001"
-                          min="0"
-                        />
-                        <Text className="text-xs text-zinc-500 mt-2">
-                          Reduce geometry vertices using Douglas-Peucker algorithm
+                {/* Advanced Options - Collapsible */}
+                {showAdvanced && (
+                  <div className="relative">
+                    <Fieldset className="p-4 bg-zinc-800/40 rounded-xl border border-zinc-700/50 space-y-6 backdrop-blur-sm max-h-[70vh] overflow-y-auto pr-2">
+                      {/* CRS Transformation Section */}
+                      <div className="space-y-4">
+                        <Text className="font-medium text-zinc-300">
+                          Coordinate Reference System (CRS) Transformation
                         </Text>
-                        <Text className="text-xs text-zinc-600 mt-1">
-                          0 = disabled. Try 0.0001–0.01 for web maps, higher values for less detail
+                        <Text className="text-sm text-zinc-500">
+                          Reproject coordinates between different coordinate systems
                         </Text>
-                      </Field>
-                    </div>
-                  </div>
 
-                  {/* Filtering Options */}
-                  <div className="space-y-4 pt-4 border-t border-zinc-800">
-                    <Text className="font-medium text-zinc-300">
-                      Data Filtering
-                    </Text>
-                    <Text className="text-sm text-zinc-500">
-                      Filter and customize the output data
-                    </Text>
-
-                    <FieldGroup>
-                      <div className="grid grid-cols-1 gap-6">
-                        {/* Layer Name */}
-                        <Field>
-                          <Label>Layer Name (optional)</Label>
-                          <Input
-                            type="text"
-                            value={layerName}
-                            onChange={(e) => setLayerName(e.target.value)}
-                            placeholder="e.g., my_layer"
-                          />
-                          <Text className="text-xs text-zinc-500 mt-2">
-                            Custom name for the output layer
-                          </Text>
-                        </Field>
-
-                        {/* Geometry Type Filter */}
-                        <Field>
-                          <Label>Geometry Type Filter</Label>
-                          <Select
-                            value={geometryTypeFilter}
-                            onChange={(e) => setGeometryTypeFilter(e.target.value)}
-                          >
-                            {GEOMETRY_TYPE_FILTERS.map((type) => (
-                              <option key={type.value} value={type.value}>
-                                {type.label}
-                              </option>
-                            ))}
-                          </Select>
-                          <Text className="text-xs text-zinc-500 mt-2">
-                            Only include specific geometry types
-                          </Text>
-                        </Field>
-
-                        {/* WHERE Clause */}
-                        <Field>
-                          <Label>Attribute Filter (WHERE clause)</Label>
-                          <Input
-                            type="text"
-                            value={whereClause}
-                            onChange={(e) => setWhereClause(e.target.value)}
-                            placeholder='population > 100000 OR area > 50'
-                          />
-                          <Text className="text-xs text-zinc-500 mt-2">
-                            SQL syntax. Examples: <code className="text-emerald-400 font-mono">type IN ("road","path")</code> or <code className="text-emerald-400 font-mono">area {">"} 1000</code>
-                          </Text>
-                        </Field>
-
-                        {/* Field Selection */}
-                        <Field>
-                          <Label>Select Fields (optional)</Label>
-                          <Input
-                            type="text"
-                            value={selectFields}
-                            onChange={(e) => setSelectFields(e.target.value)}
-                            placeholder="e.g., name,type,lanes"
-                          />
-                          <Text className="text-xs text-zinc-500 mt-2">
-                            Comma-separated list of fields to include (empty = all fields)
-                          </Text>
-                        </Field>
-                      </div>
-                    </FieldGroup>
-                  </div>
-
-                  {/* Format-Specific Options */}
-                  {(outputFormat === 'geojson' || outputFormat === 'csv') && (
-                    <div className="space-y-4 pt-4 border-t border-zinc-800">
-                      <Text className="font-medium text-zinc-300">
-                        Format-Specific Options
-                      </Text>
-                      <Text className="text-sm text-zinc-500">
-                        Options specific to the output format
-                      </Text>
-
-                      <FieldGroup>
-                        <div className="grid grid-cols-1 gap-6">
-                          {/* GeoJSON Precision */}
-                          {outputFormat === 'geojson' && (
+                        <FieldGroup>
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                            {/* Source CRS */}
                             <Field>
-                              <Label>Coordinate Precision: {geojsonPrecision}</Label>
-                              <input
-                                type="range"
-                                min="5"
-                                max="10"
-                                value={geojsonPrecision}
-                                onChange={(e) => setGeojsonPrecision(parseInt(e.target.value))}
-                                className="w-full accent-emerald-500"
+                              <Label>Source CRS</Label>
+                              <Select
+                                value={sourceCrs}
+                                onChange={(e) => setSourceCrs(e.target.value)}
+                              >
+                                {COMMON_CRS.map((crs) => (
+                                  <option key={crs.value} value={crs.value}>
+                                    {crs.label}
+                                  </option>
+                                ))}
+                              </Select>
+                              {sourceCrs === 'custom' && (
+                                <Input
+                                  type="text"
+                                  value={customSourceCrs}
+                                  onChange={(e) => setCustomSourceCrs(e.target.value)}
+                                  onBlur={handleSourceCustomBlur}
+                                  placeholder="e.g., epsg:4326 or +proj=longlat +datum=WGS84 +no_defs"
+                                  className="mt-2"
+                                  disabled={resolvingSourceCrs}
+                                />
+                              )}
+                              <Text className="text-xs text-zinc-500 mt-2">
+                                {resolvingSourceCrs
+                                  ? 'Resolving EPSG code...'
+                                  : 'Source projection (PROJ string; leave empty to auto-detect)'}
+                              </Text>
+                            </Field>
+
+                            {/* Target CRS */}
+                            <Field>
+                              <Label>Target CRS</Label>
+                              <Select
+                                value={targetCrs}
+                                onChange={(e) => setTargetCrs(e.target.value)}
+                              >
+                                {COMMON_CRS.map((crs) => (
+                                  <option key={crs.value} value={crs.value}>
+                                    {crs.label}
+                                  </option>
+                                ))}
+                              </Select>
+                              {targetCrs === 'custom' && (
+                                <Input
+                                  type="text"
+                                  value={customTargetCrs}
+                                  onChange={(e) => setCustomTargetCrs(e.target.value)}
+                                  onBlur={handleTargetCustomBlur}
+                                  placeholder="e.g., epsg:3857 or +proj=merc +lon_0=0 +k=1 +datum=WGS84"
+                                  className="mt-2"
+                                  disabled={resolvingTargetCrs}
+                                />
+                              )}
+                              <Text className="text-xs text-zinc-500 mt-2">
+                                {resolvingTargetCrs
+                                  ? 'Resolving EPSG code...'
+                                  : 'Transform to this projection (PROJ string; optional)'}
+                              </Text>
+                            </Field>
+                          </div>
+                        </FieldGroup>
+                      </div>
+
+                      {/* Processing Options */}
+                      <div className="space-y-4 pt-4 border-t border-zinc-800">
+                        <Text className="font-medium text-zinc-300">
+                          Processing Options
+                        </Text>
+                        <Text className="text-sm text-zinc-500">
+                          Control how features are processed during conversion
+                        </Text>
+
+                        <div className="space-y-4">
+                          {/* Toggle Options */}
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <Field className="flex items-center justify-between">
+                              <div>
+                                <Label>Skip Failures</Label>
+                                <Text className="text-xs text-zinc-500 mt-1">
+                                  Skip invalid features instead of failing entire conversion
+                                </Text>
+                              </div>
+                              <Switch
+                                checked={skipFailures}
+                                onChange={setSkipFailures}
+                              />
+                            </Field>
+
+                            <Field className="flex items-center justify-between">
+                              <div>
+                                <Label>Make Valid</Label>
+                                <Text className="text-xs text-zinc-500 mt-1">
+                                  Auto-fix self-intersecting polygons and topology errors
+                                </Text>
+                              </div>
+                              <Switch
+                                checked={makeValid}
+                                onChange={setMakeValid}
+                              />
+                            </Field>
+
+                            <Field className="flex items-center justify-between">
+                              <div>
+                                <Label>Keep Z Dimension</Label>
+                                <Text className="text-xs text-zinc-500 mt-1">
+                                  Preserve 3D coordinates (default: 2D)
+                                </Text>
+                              </div>
+                              <Switch
+                                checked={keepZ}
+                                onChange={setKeepZ}
+                              />
+                            </Field>
+
+                            <Field className="flex items-center justify-between">
+                              <div>
+                                <Label>Explode Collections</Label>
+                                <Text className="text-xs text-zinc-500 mt-1">
+                                  Split GeometryCollections into simple features
+                                </Text>
+                              </div>
+                              <Switch
+                                checked={explodeCollections}
+                                onChange={setExplodeCollections}
+                              />
+                            </Field>
+
+                            <Field className="flex items-center justify-between">
+                              <div>
+                                <Label>Preserve FID</Label>
+                                <Text className="text-xs text-zinc-500 mt-1">
+                                  Keep original feature IDs (for stable references)
+                                </Text>
+                              </div>
+                              <Switch
+                                checked={preserveFid}
+                                onChange={setPreserveFid}
+                              />
+                            </Field>
+                          </div>
+
+                          {/* Simplify */}
+                          <Field>
+                            <Label>Simplify Tolerance (optional)</Label>
+                            <Input
+                              type="number"
+                              value={simplifyTolerance}
+                              onChange={(e) => setSimplifyTolerance(parseFloat(e.target.value) || 0)}
+                              placeholder="0"
+                              step="0.0001"
+                              min="0"
+                            />
+                            <Text className="text-xs text-zinc-500 mt-2">
+                              Reduce geometry vertices using Douglas-Peucker algorithm
+                            </Text>
+                            <Text className="text-xs text-zinc-600 mt-1">
+                              0 = disabled. Try 0.0001–0.01 for web maps, higher values for less detail
+                            </Text>
+                          </Field>
+                        </div>
+                      </div>
+
+                      {/* Filtering Options */}
+                      <div className="space-y-4 pt-4 border-t border-zinc-800">
+                        <Text className="font-medium text-zinc-300">
+                          Data Filtering
+                        </Text>
+                        <Text className="text-sm text-zinc-500">
+                          Filter and customize the output data
+                        </Text>
+
+                        <FieldGroup>
+                          <div className="grid grid-cols-1 gap-6">
+                            {/* Layer Name */}
+                            <Field>
+                              <Label>Layer Name (optional)</Label>
+                              <Input
+                                type="text"
+                                value={layerName}
+                                onChange={(e) => setLayerName(e.target.value)}
+                                placeholder="e.g., my_layer"
                               />
                               <Text className="text-xs text-zinc-500 mt-2">
-                                Number of decimal places for coordinates (5 = ~1m, 7 = ~1cm, 10 = ~1mm)
+                                Custom name for the output layer
                               </Text>
                             </Field>
-                          )}
 
-                          {/* CSV Geometry Mode */}
-                          {outputFormat === 'csv' && (
+                            {/* Geometry Type Filter */}
                             <Field>
-                              <Label>Geometry Format</Label>
+                              <Label>Geometry Type Filter</Label>
                               <Select
-                                value={csvGeometryMode}
-                                onChange={(e) => setCsvGeometryMode(e.target.value)}
+                                value={geometryTypeFilter}
+                                onChange={(e) => setGeometryTypeFilter(e.target.value)}
                               >
-                                <option value="WKT">WKT (Well-Known Text)</option>
-                                <option value="XY">X/Y Columns</option>
+                                {GEOMETRY_TYPE_FILTERS.map((type) => (
+                                  <option key={type.value} value={type.value}>
+                                    {type.label}
+                                  </option>
+                                ))}
                               </Select>
                               <Text className="text-xs text-zinc-500 mt-2">
-                                How to represent geometries in CSV output
+                                Only include specific geometry types
                               </Text>
                             </Field>
-                          )}
+
+                            {/* WHERE Clause */}
+                            <Field>
+                              <Label>Attribute Filter (WHERE clause)</Label>
+                              <Input
+                                type="text"
+                                value={whereClause}
+                                onChange={(e) => setWhereClause(e.target.value)}
+                                placeholder='population > 100000 OR area > 50'
+                              />
+                              <Text className="text-xs text-zinc-500 mt-2">
+                                SQL syntax. Examples: <code className="text-emerald-400 font-mono">type IN ("road","path")</code> or <code className="text-emerald-400 font-mono">area {">"} 1000</code>
+                              </Text>
+                            </Field>
+
+                            {/* Field Selection */}
+                            <Field>
+                              <Label>Select Fields (optional)</Label>
+                              <Input
+                                type="text"
+                                value={selectFields}
+                                onChange={(e) => setSelectFields(e.target.value)}
+                                placeholder="e.g., name,type,lanes"
+                              />
+                              <Text className="text-xs text-zinc-500 mt-2">
+                                Comma-separated list of fields to include (empty = all fields)
+                              </Text>
+                            </Field>
+                          </div>
+                        </FieldGroup>
+                      </div>
+
+                      {/* Format-Specific Options */}
+                      {(outputFormat === 'geojson' || outputFormat === 'csv') && (
+                        <div className="space-y-4 pt-4 border-t border-zinc-800">
+                          <Text className="font-medium text-zinc-300">
+                            Format-Specific Options
+                          </Text>
+                          <Text className="text-sm text-zinc-500">
+                            Options specific to the output format
+                          </Text>
+
+                          <FieldGroup>
+                            <div className="grid grid-cols-1 gap-6">
+                              {/* GeoJSON Precision */}
+                              {outputFormat === 'geojson' && (
+                                <Field>
+                                  <Label>Coordinate Precision: {geojsonPrecision}</Label>
+                                  <input
+                                    type="range"
+                                    min="5"
+                                    max="10"
+                                    value={geojsonPrecision}
+                                    onChange={(e) => setGeojsonPrecision(parseInt(e.target.value))}
+                                    className="w-full accent-emerald-500"
+                                  />
+                                  <Text className="text-xs text-zinc-500 mt-2">
+                                    Number of decimal places for coordinates (5 = ~1m, 7 = ~1cm, 10 = ~1mm)
+                                  </Text>
+                                </Field>
+                              )}
+
+                              {/* CSV Geometry Mode */}
+                              {outputFormat === 'csv' && (
+                                <Field>
+                                  <Label>Geometry Format</Label>
+                                  <Select
+                                    value={csvGeometryMode}
+                                    onChange={(e) => setCsvGeometryMode(e.target.value)}
+                                  >
+                                    <option value="WKT">WKT (Well-Known Text)</option>
+                                    <option value="XY">X/Y Columns</option>
+                                  </Select>
+                                  <Text className="text-xs text-zinc-500 mt-2">
+                                    How to represent geometries in CSV output
+                                  </Text>
+                                </Field>
+                              )}
+                            </div>
+                          </FieldGroup>
                         </div>
-                      </FieldGroup>
-                    </div>
-                  )}
+                      )}
 
-                  {/* Automatic Features Info */}
-                  <div className="space-y-3 pt-4 border-t border-zinc-800">
-                    <Text className="font-medium text-zinc-300">
-                      Built-in Optimizations
-                    </Text>
-                    <div className="space-y-2">
-                      <div className="flex items-start gap-2">
-                        <span className="text-emerald-500 mt-0.5">✓</span>
-                        <Text className="text-xs text-zinc-400">
-                          <strong className="text-zinc-300">Shapefile Geometry Splitting:</strong> Mixed geometries automatically split by type (points, lines, polygons) with multi-promotion
+                      {/* Automatic Features Info */}
+                      <div className="space-y-3 pt-4 border-t border-zinc-800">
+                        <Text className="font-medium text-zinc-300">
+                          Built-in Optimizations
                         </Text>
+                        <div className="space-y-2">
+                          <div className="flex items-start gap-2">
+                            <span className="text-emerald-500 mt-0.5">✓</span>
+                            <Text className="text-xs text-zinc-400">
+                              <strong className="text-zinc-300">Shapefile Geometry Splitting:</strong> Mixed geometries automatically split by type (points, lines, polygons) with multi-promotion
+                            </Text>
+                          </div>
+                          <div className="flex items-start gap-2">
+                            <span className="text-emerald-500 mt-0.5">✓</span>
+                            <Text className="text-xs text-zinc-400">
+                              <strong className="text-zinc-300">Format Optimizations:</strong> GeoJSON with bbox, GeoPackage with spatial index, Shapefile with UTF-8, CSV with geometry handling
+                            </Text>
+                          </div>
+                          <div className="flex items-start gap-2">
+                            <span className="text-emerald-500 mt-0.5">✓</span>
+                            <Text className="text-xs text-zinc-400">
+                              <strong className="text-zinc-300">Smart CRS:</strong> Auto-detects existing CRS, intelligently assigns vs transforms based on source data
+                            </Text>
+                          </div>
+                          <div className="flex items-start gap-2">
+                            <span className="text-blue-400 mt-0.5">⚙</span>
+                            <Text className="text-xs text-zinc-400">
+                              <strong className="text-zinc-300">Default Behavior:</strong> 2D output (toggle "Keep Z"), explode collections ON, precision=7 for GeoJSON
+                            </Text>
+                          </div>
+                        </div>
                       </div>
-                      <div className="flex items-start gap-2">
-                        <span className="text-emerald-500 mt-0.5">✓</span>
-                        <Text className="text-xs text-zinc-400">
-                          <strong className="text-zinc-300">Format Optimizations:</strong> GeoJSON with bbox, GeoPackage with spatial index, Shapefile with UTF-8, CSV with geometry handling
-                        </Text>
-                      </div>
-                      <div className="flex items-start gap-2">
-                        <span className="text-emerald-500 mt-0.5">✓</span>
-                        <Text className="text-xs text-zinc-400">
-                          <strong className="text-zinc-300">Smart CRS:</strong> Auto-detects existing CRS, intelligently assigns vs transforms based on source data
-                        </Text>
-                      </div>
-                      <div className="flex items-start gap-2">
-                        <span className="text-blue-400 mt-0.5">⚙</span>
-                        <Text className="text-xs text-zinc-400">
-                          <strong className="text-zinc-300">Default Behavior:</strong> 2D output (toggle "Keep Z"), explode collections ON, precision=7 for GeoJSON
-                        </Text>
-                      </div>
-                    </div>
+                    </Fieldset>
+                    <div className="pointer-events-none absolute inset-x-0 top-0 h-4 bg-gradient-to-b from-zinc-800/70 to-transparent rounded-t-xl" />
+                    <div className="pointer-events-none absolute inset-x-0 bottom-0 h-4 bg-gradient-to-t from-zinc-800/70 to-transparent rounded-b-xl" />
                   </div>
-                </Fieldset>
-                <div className="pointer-events-none absolute inset-x-0 top-0 h-4 bg-gradient-to-b from-zinc-800/70 to-transparent rounded-t-xl" />
-                <div className="pointer-events-none absolute inset-x-0 bottom-0 h-4 bg-gradient-to-t from-zinc-800/70 to-transparent rounded-b-xl" />
-              </div>
-            )}
+                )}
 
-            {/* Convert Button */}
-            <Button
-              color="emerald"
-              onClick={handleConvert}
-              disabled={!selectedFile || isInitializing || isConverting}
-              className="w-full"
-            >
-              {isInitializing ? (
-                <>
-                  <ArrowPathIcon data-slot="icon" className="animate-spin" />
-                  <span>Initializing...</span>
-                </>
-              ) : isConverting ? (
-                <>
-                  <ArrowPathIcon data-slot="icon" className="animate-spin" />
-                  <span>Converting...</span>
-                </>
-              ) : (
-                <>
-                  <ArrowDownTrayIcon data-slot="icon" />
-                  <span>Convert & Download</span>
-                </>
-              )}
-            </Button>
+                {/* Convert Button */}
+                <Button
+                  color="emerald"
+                  onClick={handleConvert}
+                  disabled={!selectedFile || isInitializing || isConverting}
+                  className="w-full"
+                >
+                  {isInitializing ? (
+                    <>
+                      <ArrowPathIcon data-slot="icon" className="animate-spin" />
+                      <span>Initializing...</span>
+                    </>
+                  ) : isConverting ? (
+                    <>
+                      <ArrowPathIcon data-slot="icon" className="animate-spin" />
+                      <span>Converting...</span>
+                    </>
+                  ) : (
+                    <>
+                      <ArrowDownTrayIcon data-slot="icon" />
+                      <span>Convert & Download</span>
+                    </>
+                  )}
+                </Button>
               </div>
             </motion.div>
 
