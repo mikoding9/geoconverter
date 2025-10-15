@@ -304,44 +304,48 @@ export function SupportedFormats({ className }) {
     >
       <div className="bg-zinc-900/90 backdrop-blur-md border border-zinc-700/50 rounded-xl p-4 sticky top-24 shadow-2xl">
         <h3 className="text-sm font-semibold text-zinc-100 mb-3">Supported Formats</h3>
-        <div className="space-y-1">
-          {SUPPORTED_FORMATS.map((format) => (
-            <div key={format.value} className="border-b border-zinc-800/50 last:border-0">
-              <button
-                onClick={() => setExpandedFormat(expandedFormat === format.value ? null : format.value)}
-                className="w-full text-left px-3 py-2 hover:bg-zinc-800/50 rounded transition-colors"
-              >
-                <div className="flex items-center justify-between">
-                  <span className="text-sm font-medium text-zinc-300">{format.label}</span>
-                  <span className="flex items-center gap-2 text-xs text-zinc-500">
-                    {format.capabilities.read && format.capabilities.write
-                      ? 'Input · Output'
-                      : format.capabilities.read
-                        ? 'Input Only'
-                        : 'Output Only'}
-                    <span>{expandedFormat === format.value ? '▼' : '▶'}</span>
-                  </span>
-                </div>
-              </button>
-              {expandedFormat === format.value && (
-                <motion.div
-                  initial={{ height: 0, opacity: 0 }}
-                  animate={{ height: 'auto', opacity: 1 }}
-                  exit={{ height: 0, opacity: 0 }}
-                  className="px-3 pb-3 space-y-2"
+        <div className="relative">
+          <div className="space-y-1 max-h-[60vh] overflow-y-auto pr-1">
+            {SUPPORTED_FORMATS.map((format) => (
+              <div key={format.value} className="border-b border-zinc-800/50 last:border-0">
+                <button
+                  onClick={() => setExpandedFormat(expandedFormat === format.value ? null : format.value)}
+                  className="w-full text-left px-3 py-2 hover:bg-zinc-800/50 rounded transition-colors"
                 >
-                  <p className="text-xs text-zinc-400 leading-relaxed">
-                    {format.description}
-                  </p>
-                  <div className="pt-2 border-t border-zinc-800/30 mt-2">
-                    <p className="text-xs text-emerald-400/80 italic">
-                      💡 {format.useCase}
-                    </p>
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm font-medium text-zinc-300">{format.label}</span>
+                    <span className="flex items-center gap-2 text-xs text-zinc-500">
+                      {format.capabilities.read && format.capabilities.write
+                        ? 'Input · Output'
+                        : format.capabilities.read
+                          ? 'Input Only'
+                          : 'Output Only'}
+                      <span>{expandedFormat === format.value ? '▼' : '▶'}</span>
+                    </span>
                   </div>
-                </motion.div>
-              )}
-            </div>
-          ))}
+                </button>
+                {expandedFormat === format.value && (
+                  <motion.div
+                    initial={{ height: 0, opacity: 0 }}
+                    animate={{ height: 'auto', opacity: 1 }}
+                    exit={{ height: 0, opacity: 0 }}
+                    className="px-3 pb-3 space-y-2"
+                  >
+                    <p className="text-xs text-zinc-400 leading-relaxed">
+                      {format.description}
+                    </p>
+                    <div className="pt-2 border-t border-zinc-800/30 mt-2">
+                      <p className="text-xs text-emerald-400/80 italic">
+                        💡 {format.useCase}
+                      </p>
+                    </div>
+                  </motion.div>
+                )}
+              </div>
+            ))}
+          </div>
+          <div className="pointer-events-none absolute inset-x-0 top-0 h-4 bg-gradient-to-b from-zinc-900/90 to-transparent rounded-t-xl" />
+          <div className="pointer-events-none absolute inset-x-0 bottom-0 h-4 bg-gradient-to-t from-zinc-900/90 to-transparent rounded-b-xl" />
         </div>
       </div>
     </motion.aside>

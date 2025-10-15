@@ -15,6 +15,7 @@ export function FeedbackForm({ className = '' }) {
   const [feedbackMessage, setFeedbackMessage] = useState('')
   const [feedbackAttachment, setFeedbackAttachment] = useState(null)
   const [isFeedbackSubmitting, setIsFeedbackSubmitting] = useState(false)
+  const [showOptionalFields, setShowOptionalFields] = useState(false)
   const [toast, setToast] = useState({ isOpen: false, message: '', type: 'success' })
 
   const handleFeedbackSubmit = async (e) => {
@@ -116,61 +117,82 @@ export function FeedbackForm({ className = '' }) {
             />
           </Field>
 
-          <Field>
-            <Label className="text-xs">Attachment (optional)</Label>
-            <div className="relative mt-2">
-              <input
-                type="file"
-                id="feedback-file-upload"
-                onChange={(e) => setFeedbackAttachment(e.target.files?.[0] || null)}
-                className="hidden"
-              />
-              <label
-                htmlFor="feedback-file-upload"
-                className={clsx(
-                  'flex items-center gap-2 px-3 py-2 border rounded-lg cursor-pointer transition-colors text-xs',
-                  feedbackAttachment
-                    ? 'border-emerald-500/50 bg-emerald-500/5 text-zinc-300'
-                    : 'border-zinc-700 bg-zinc-800 text-zinc-500 hover:border-zinc-600'
-                )}
+          <button
+            type="button"
+            onClick={() => setShowOptionalFields(!showOptionalFields)}
+            className="flex items-center justify-start space-x-2 w-full text-sm text-zinc-400 hover:text-zinc-200 transition-colors"
+            aria-expanded={showOptionalFields}
+          >
+            <span>{showOptionalFields ? '▼' : '▶'}</span>
+            <span className="font-medium text-zinc-300">Optional details</span>
+          </button>
+
+          {showOptionalFields && (
+            <div className="relative">
+              <motion.div
+                initial={{ opacity: 0, y: -4 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.2 }}
+                className="space-y-4 border border-zinc-800 rounded-xl bg-zinc-800/40 px-4 py-4 backdrop-blur-sm"
               >
-                <DocumentArrowUpIcon className="w-4 h-4" />
-                <span className="flex-1 truncate">
-                  {feedbackAttachment ? feedbackAttachment.name : 'Attach file'}
-                </span>
-                {feedbackAttachment && (
-                  <span className="text-xs text-zinc-500">
-                    {(feedbackAttachment.size / 1024).toFixed(1)}KB
-                  </span>
-                )}
-              </label>
+                <Field>
+                  <Label className="text-xs">Attachment</Label>
+                  <div className="relative mt-2">
+                    <input
+                      type="file"
+                      id="feedback-file-upload"
+                      onChange={(e) => setFeedbackAttachment(e.target.files?.[0] || null)}
+                      className="hidden"
+                    />
+                    <label
+                      htmlFor="feedback-file-upload"
+                      className={clsx(
+                        'flex items-center gap-2 px-3 py-2 border rounded-lg cursor-pointer transition-colors text-xs',
+                        feedbackAttachment
+                          ? 'border-emerald-500/50 bg-emerald-500/5 text-zinc-300'
+                          : 'border-zinc-700 bg-zinc-800 text-zinc-500 hover:border-zinc-600'
+                      )}
+                    >
+                      <DocumentArrowUpIcon className="w-4 h-4" />
+                      <span className="flex-1 truncate">
+                        {feedbackAttachment ? feedbackAttachment.name : 'Attach file'}
+                      </span>
+                      {feedbackAttachment && (
+                        <span className="text-xs text-zinc-500">
+                          {(feedbackAttachment.size / 1024).toFixed(1)}KB
+                        </span>
+                      )}
+                    </label>
+                  </div>
+                  <Text className="text-xs text-zinc-500 mt-1">
+                    Screenshots, logs, or sample files (max 10MB)
+                  </Text>
+                </Field>
+
+                <Field>
+                  <Label className="text-xs">Name</Label>
+                  <Input
+                    type="text"
+                    value={feedbackName}
+                    onChange={(e) => setFeedbackName(e.target.value)}
+                    placeholder="Your name"
+                    className="text-sm"
+                  />
+                </Field>
+
+                <Field>
+                  <Label className="text-xs">Email</Label>
+                  <Input
+                    type="email"
+                    value={feedbackEmail}
+                    onChange={(e) => setFeedbackEmail(e.target.value)}
+                    placeholder="your@email.com"
+                    className="text-sm"
+                  />
+                </Field>
+              </motion.div>
             </div>
-            <Text className="text-xs text-zinc-500 mt-1">
-              Screenshots, logs, or sample files (max 10MB)
-            </Text>
-          </Field>
-
-          <Field>
-            <Label className="text-xs">Name (optional)</Label>
-            <Input
-              type="text"
-              value={feedbackName}
-              onChange={(e) => setFeedbackName(e.target.value)}
-              placeholder="Your name"
-              className="text-sm"
-            />
-          </Field>
-
-          <Field>
-            <Label className="text-xs">Email (optional)</Label>
-            <Input
-              type="email"
-              value={feedbackEmail}
-              onChange={(e) => setFeedbackEmail(e.target.value)}
-              placeholder="your@email.com"
-              className="text-sm"
-            />
-          </Field>
+          )}
 
           <Button
             type="submit"
