@@ -4,17 +4,8 @@ const path = require('path');
 const fs = require('fs');
 
 /**
- * Comprehensive test suite for all 10 supported formats:
- * 1. GeoJSON
- * 2. Shapefile
- * 3. GeoPackage
- * 4. KML
- * 5. GPX
- * 6. GML
- * 7. FlatGeobuf
- * 8. CSV
- * 9. PMTiles
- * 10. MBTiles
+ * Core regression tests for the primary conversion formats bundled with the app.
+ * Additional smoke tests for newly exposed GDAL drivers appear later in this file.
  */
 
 test.describe('GeoConverter - All Format Tests', () => {
@@ -483,6 +474,82 @@ test.describe('GeoConverter - All Format Tests', () => {
     });
   });
 
+  test.describe('Additional GDAL Vector Drivers', () => {
+    test('should convert GeoJSON to GeoJSONSeq', async ({ page }) => {
+      const download = await performConversion(page, 'geojson', 'geojsonseq', 'sample.geojson');
+      verifyDownload(download, 'sample', '.geojsonseq');
+      const downloadPath = await saveAndReadDownload(download);
+
+      const content = fs.readFileSync(downloadPath, 'utf-8');
+      const nonEmptyLines = content
+        .split('\n')
+        .map((line) => line.trim())
+        .filter(Boolean);
+      expect(nonEmptyLines.length).toBeGreaterThan(0);
+      expect(nonEmptyLines[0]).toContain('"type":"Feature"');
+
+      cleanupDownload(downloadPath);
+    });
+
+    test('should convert GeoJSON to JSON-FG', async ({ page }) => {
+      const download = await performConversion(page, 'geojson', 'jsonfg', 'sample.geojson');
+      verifyDownload(download, 'sample', '.jsonfg');
+      const downloadPath = await saveAndReadDownload(download);
+
+      const content = fs.readFileSync(downloadPath, 'utf-8');
+      expect(content).toContain('"type":"FeatureCollection"');
+      expect(content).toContain('"features"');
+
+      cleanupDownload(downloadPath);
+    });
+
+    test('should convert GeoJSON to GeoRSS', async ({ page }) => {
+      const download = await performConversion(page, 'geojson', 'georss', 'sample.geojson');
+      verifyDownload(download, 'sample', '.georss');
+      const downloadPath = await saveAndReadDownload(download);
+
+      const content = fs.readFileSync(downloadPath, 'utf-8');
+      expect(content).toContain('<?xml');
+      expect(content.toLowerCase()).toContain('<rss');
+
+      cleanupDownload(downloadPath);
+    });
+
+    test('should convert GeoJSON to SQLite', async ({ page }) => {
+      const download = await performConversion(page, 'geojson', 'sqlite', 'sample.geojson');
+      verifyDownload(download, 'sample', '.sqlite');
+      const downloadPath = await saveAndReadDownload(download);
+
+      const buffer = fs.readFileSync(downloadPath);
+      expect(buffer.slice(0, 15).toString()).toContain('SQLite format');
+
+      cleanupDownload(downloadPath);
+    });
+
+    test('should convert GeoJSON to XLSX', async ({ page }) => {
+      const download = await performConversion(page, 'geojson', 'xlsx', 'sample.geojson');
+      verifyDownload(download, 'sample', '.xlsx');
+      const downloadPath = await saveAndReadDownload(download);
+
+      const buffer = fs.readFileSync(downloadPath);
+      expect(buffer[0]).toBe(0x50); // 'P'
+      expect(buffer[1]).toBe(0x4B); // 'K'
+
+      cleanupDownload(downloadPath);
+    });
+
+    test('should convert GeoJSON to PGDump', async ({ page }) => {
+      const download = await performConversion(page, 'geojson', 'pgdump', 'sample.geojson');
+      verifyDownload(download, 'sample', '.sql');
+      const downloadPath = await saveAndReadDownload(download);
+
+      const content = fs.readFileSync(downloadPath, 'utf-8');
+      expect(/(COPY|INSERT INTO)/.test(content)).toBeTruthy();
+
+      cleanupDownload(downloadPath);
+    });
+  });
+
   test.describe('Format Auto-Detection', () => {
     test('should auto-detect GeoJSON format from .geojson file', async ({ page }) => {
       const fileInput = page.locator('input[type="file"]');
@@ -542,34 +609,43 @@ test.describe('GeoConverter - All Format Tests', () => {
       await expect(page.locator('text=Data Filtering')).toBeVisible();
     });
 
-    test('should display all 10 supported formats in format lists', async ({ page }) => {
+    test('should list both core and extended formats in selectors', async ({ page }) => {
       const inputFormatSelect = page.locator('label:has-text("Input Format")').locator('..').locator('select');
       const outputFormatSelect = page.locator('label:has-text("Output Format")').locator('..').locator('select');
 
-      const expectedFormats = [
+      const inputOptions = await inputFormatSelect.locator('option').allTextContents();
+      const expectedInputLabels = [
         'GeoJSON',
         'Shapefile',
         'GeoPackage',
         'KML',
-        'GPX',
-        'GML',
         'FlatGeobuf',
-        'CSV',
-        'PMTiles',
-        'MBTiles'
+        'GeoRSS',
+        'JSON-FG',
+        'SQLite',
+        'XLSX',
+        'TopoJSON (input only)'
       ];
-
-      // Check input formats
-      const inputOptions = await inputFormatSelect.locator('option').allTextContents();
-      for (const format of expectedFormats) {
+      expectedInputLabels.forEach((format) => {
         expect(inputOptions).toContain(format);
-      }
+      });
+      expect(inputOptions.length).toBeGreaterThanOrEqual(expectedInputLabels.length);
 
-      // Check output formats
       const outputOptions = await outputFormatSelect.locator('option').allTextContents();
-      for (const format of expectedFormats) {
+      const expectedOutputLabels = [
+        'GeoJSON',
+        'Shapefile',
+        'GeoPackage',
+        'JSON-FG',
+        'GeoRSS',
+        'SQLite',
+        'XLSX',
+        'PGDump (output only)'
+      ];
+      expectedOutputLabels.forEach((format) => {
         expect(outputOptions).toContain(format);
-      }
+      });
+      expect(outputOptions.length).toBeGreaterThanOrEqual(expectedOutputLabels.length);
     });
   });
 

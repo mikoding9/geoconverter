@@ -6,7 +6,7 @@ Transform geospatial vector data between various formats directly in your browse
 
 ## Features
 
-- **12 Supported Formats**: GeoJSON, TopoJSON, Shapefile, GeoPackage, KML, GPX, GML, FlatGeobuf, CSV, DXF, PMTiles, MBTiles
+- **30 Supported Formats**: GeoJSON, TopoJSON (input only), Shapefile, GeoPackage, KML, GPX, GML, FlatGeobuf, CSV, DXF, PMTiles, MBTiles, DGN, GeoJSONSeq, GeoRSS, Geoconcept, JML, JSON-FG, MapML, ODS, OGR GMT, PCIDSK, PDS4, S-57, SQLite, Selafin, VDV, VICAR, WAsP, XLSX, PGDump (output only)
 - **CRS Transformation**: Reproject coordinates between different coordinate reference systems (EPSG codes and custom PROJ strings)
 - **Advanced Processing Options**:
   - Geometry filtering by type (Point, LineString, Polygon, etc.)
@@ -106,7 +106,7 @@ pnpm exec playwright install
 | Format | Input | Output | Notes |
 |--------|-------|--------|-------|
 | GeoJSON | ✓ | ✓ | Configurable precision, bbox support |
-| TopoJSON | ✓ | ✓ | Topology-preserving boundary sharing |
+| TopoJSON | ✓ | — | Topology-preserving boundary sharing (input only) |
 | Shapefile (ZIP) | ✓ | ✓ | Auto geometry splitting, UTF-8 encoding |
 | GeoPackage | ✓ | ✓ | SQLite-based, spatial indexing |
 | KML | ✓ | ✓ | Google Earth format |
@@ -117,6 +117,25 @@ pnpm exec playwright install
 | DXF | ✓ | ✓ | CAD-friendly exchange format |
 | PMTiles | ✓ | ✓ | Cloud-optimized tiled format |
 | MBTiles | ✓ | ✓ | SQLite-based tiles for offline use |
+| DGN | ✓ | ✓ | MicroStation design file exchange |
+| GeoJSONSeq | ✓ | ✓ | Newline-delimited GeoJSON text sequences |
+| GeoRSS | ✓ | ✓ | Geotagged RSS/Atom feeds |
+| Geoconcept (GXT) | ✓ | ✓ | Geoconcept GIS interchange |
+| JML | ✓ | ✓ | JMap layer XML format |
+| JSON-FG | ✓ | ✓ | OGC JSON Features and Geometries |
+| MapML | ✓ | ✓ | Web-ready Map Markup Language |
+| ODS | ✓ | ✓ | OpenDocument spreadsheet with vector data |
+| OGR GMT | ✓ | ✓ | Generic Mapping Tools ASCII |
+| PCIDSK | ✓ | ✓ | PCI Geomatics PIX container |
+| PDS4 | ✓ | ✓ | NASA Planetary Data System 4 tables |
+| S-57 | ✓ | ✓ | Electronic Navigational Chart exchange |
+| SQLite | ✓ | ✓ | Lightweight database container |
+| Selafin | ✓ | ✓ | TELEMAC SELAFIN hydrodynamic mesh |
+| VDV | ✓ | ✓ | Public transport VDV-451 files |
+| VICAR | ✓ | ✓ | NASA/JPL VICAR imagery container |
+| WAsP | ✓ | ✓ | Wind Atlas Application Program maps |
+| XLSX | ✓ | ✓ | Excel workbook export |
+| PGDump | — | ✓ | PostGIS-compatible SQL dump (output only) |
 
 ## Project Structure
 

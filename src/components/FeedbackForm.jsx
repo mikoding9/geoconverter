@@ -9,7 +9,7 @@ import { Textarea } from '@/components/textarea'
 import { Toast } from '@/components/Toast'
 import clsx from 'clsx'
 
-export function FeedbackForm() {
+export function FeedbackForm({ className = '' }) {
   const [feedbackName, setFeedbackName] = useState('')
   const [feedbackEmail, setFeedbackEmail] = useState('')
   const [feedbackMessage, setFeedbackMessage] = useState('')
@@ -98,7 +98,7 @@ export function FeedbackForm() {
       initial={{ opacity: 0, x: 20 }}
       animate={{ opacity: 1, x: 0 }}
       transition={{ duration: 0.6, delay: 0.6 }}
-      className="lg:col-span-3"
+      className={clsx(className)}
     >
       <div className="bg-zinc-900/90 backdrop-blur-md border border-zinc-700/50 rounded-xl p-4 sticky top-24 shadow-2xl">
         <h3 className="text-sm font-semibold text-zinc-100 mb-3">Send Feedback</h3>

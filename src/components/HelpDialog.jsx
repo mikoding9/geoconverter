@@ -147,47 +147,40 @@ export function HelpDialog({ isOpen, onClose }) {
                 {/* Supported Formats */}
                 <section className="space-y-3">
                   <h3 className="text-lg font-semibold text-emerald-400">Supported Formats</h3>
-                  <div className="bg-zinc-950/50 border border-zinc-800 rounded-lg p-4 space-y-2 text-sm">
-                    <div className="flex items-center gap-2">
-                      <span className="text-emerald-400">✓</span>
-                      <span className="text-zinc-300"><strong>GeoJSON</strong> - Web-friendly, JSON-based format</span>
+                  <div className="bg-zinc-950/50 border border-zinc-800 rounded-lg p-4 space-y-3 text-sm text-zinc-300">
+                    <p>
+                      Convert between <strong className="text-zinc-100">30+ GDAL vector formats</strong> including popular
+                      GIS standards and specialist workflows.
+                    </p>
+                    <div className="grid gap-2 sm:grid-cols-2">
+                      <div className="flex items-start gap-2">
+                        <span className="text-emerald-400 mt-0.5">✓</span>
+                        <span>
+                          <strong>GeoJSON, GeoPackage, Shapefile</strong>, KML, GPX, GML, FlatGeobuf, CSV, DXF, DGN
+                        </span>
+                      </div>
+                      <div className="flex items-start gap-2">
+                        <span className="text-emerald-400 mt-0.5">✓</span>
+                        <span>
+                          <strong>MBTiles, PMTiles, SQLite, XLSX</strong>, JSON-FG, GeoRSS, MapML, GeoJSONSeq, Geoconcept
+                        </span>
+                      </div>
+                      <div className="flex items-start gap-2">
+                        <span className="text-emerald-400 mt-0.5">✓</span>
+                        <span>
+                          S-57, Selafin, VICAR, WAsP, ODS, OGR GMT, PCIDSK, PDS4, VDV and more
+                        </span>
+                      </div>
+                      <div className="flex items-start gap-2">
+                        <span className="text-emerald-400 mt-0.5">ⓘ</span>
+                        <span>
+                          <strong>TopoJSON</strong> is input-only; <strong>PGDump</strong> is output-only for PostGIS dumps
+                        </span>
+                      </div>
                     </div>
-                    <div className="flex items-center gap-2">
-                      <span className="text-emerald-400">✓</span>
-                      <span className="text-zinc-300"><strong>Shapefile</strong> - Industry standard (ESRI)</span>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <span className="text-emerald-400">✓</span>
-                      <span className="text-zinc-300"><strong>GeoPackage</strong> - Modern SQLite-based format</span>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <span className="text-emerald-400">✓</span>
-                      <span className="text-zinc-300"><strong>KML</strong> - Google Earth/Maps format</span>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <span className="text-emerald-400">✓</span>
-                      <span className="text-zinc-300"><strong>GPX</strong> - GPS Exchange Format</span>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <span className="text-emerald-400">✓</span>
-                      <span className="text-zinc-300"><strong>GML</strong> - Geography Markup Language (OGC)</span>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <span className="text-emerald-400">✓</span>
-                      <span className="text-zinc-300"><strong>FlatGeobuf</strong> - Cloud-optimized streaming format</span>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <span className="text-emerald-400">✓</span>
-                      <span className="text-zinc-300"><strong>CSV</strong> - Tabular format with WKT or X/Y geometry</span>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <span className="text-emerald-400">✓</span>
-                      <span className="text-zinc-300"><strong>PMTiles</strong> - Cloud-optimized tiled format</span>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <span className="text-emerald-400">✓</span>
-                      <span className="text-zinc-300"><strong>MBTiles</strong> - SQLite-based tile format (Mapbox)</span>
-                    </div>
+                    <p className="text-xs text-zinc-400">
+                      Need something else? Let us know via the feedback form—GDAL supports dozens more drivers.
+                    </p>
                   </div>
                 </section>
 

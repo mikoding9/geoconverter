@@ -79,6 +79,25 @@ static std::string getDriverNameFromFormat(const std::string& format) {
     if (f == "pmtiles")     return "PMTiles";
     if (f == "mbtiles")     return "MBTiles";
     if (f == "dxf")         return "DXF";
+    if (f == "dgn")         return "DGN";
+    if (f == "geojsonseq")  return "GeoJSONSeq";
+    if (f == "georss")      return "GeoRSS";
+    if (f == "geoconcept")  return "Geoconcept";
+    if (f == "jml")         return "JML";
+    if (f == "jsonfg")      return "JSONFG";
+    if (f == "mapml")       return "MapML";
+    if (f == "ods")         return "ODS";
+    if (f == "ogr_gmt")     return "OGR_GMT";
+    if (f == "pcidsk")      return "PCIDSK";
+    if (f == "pds4")        return "PDS4";
+    if (f == "s57")         return "S57";
+    if (f == "sqlite")      return "SQLite";
+    if (f == "selafin")     return "Selafin";
+    if (f == "vdv")         return "VDV";
+    if (f == "vicar")       return "VICAR";
+    if (f == "wasp")        return "WAsP";
+    if (f == "xlsx")        return "XLSX";
+    if (f == "pgdump")      return "PGDump";
     return "GeoJSON";
 }
 
@@ -96,6 +115,25 @@ static std::string getExtensionFromFormat(const std::string& format) {
     if (f == "pmtiles")     return ".pmtiles";
     if (f == "mbtiles")     return ".mbtiles";
     if (f == "dxf")         return ".dxf";
+    if (f == "dgn")         return ".dgn";
+    if (f == "geojsonseq")  return ".geojsonseq";
+    if (f == "georss")      return ".georss";
+    if (f == "geoconcept")  return ".gxt";
+    if (f == "jml")         return ".jml";
+    if (f == "jsonfg")      return ".jsonfg";
+    if (f == "mapml")       return ".mapml";
+    if (f == "ods")         return ".ods";
+    if (f == "ogr_gmt")     return ".gmt";
+    if (f == "pcidsk")      return ".pix";
+    if (f == "pds4")        return ".pds4.xml";
+    if (f == "s57")         return ".000";
+    if (f == "sqlite")      return ".sqlite";
+    if (f == "selafin")     return ".slf";
+    if (f == "vdv")         return ".vdv";
+    if (f == "vicar")       return ".vic";
+    if (f == "wasp")        return ".map";
+    if (f == "xlsx")        return ".xlsx";
+    if (f == "pgdump")      return ".sql";
     return ".geojson";
 }
 

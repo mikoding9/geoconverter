@@ -6,13 +6,13 @@ import { Input } from '@/components/input'
 import { Field, Label, Fieldset, FieldGroup } from '@/components/fieldset'
 import { Switch } from '@/components/switch'
 import {
-  InformationCircleIcon,
   ArrowPathIcon,
   DocumentArrowUpIcon,
   ArrowDownTrayIcon,
   EyeIcon,
   XMarkIcon,
-  QuestionMarkCircleIcon
+  QuestionMarkCircleIcon,
+  InformationCircleIcon
 } from '@heroicons/react/24/outline'
 import { motion } from 'motion/react'
 import clsx from 'clsx'
@@ -20,6 +20,7 @@ import JSZip from 'jszip'
 import { initCppJs, Native, VectorUint8 } from '@/native/native.h'
 import { Text } from '@/components/text'
 import { SupportedFormats, SUPPORTED_FORMATS } from '@/components/SupportedFormats'
+import { ChangelogCard } from '@/components/ChangelogCard'
 import { FeedbackForm } from '@/components/FeedbackForm'
 import { Toast } from '@/components/Toast'
 import { HelpDialog } from '@/components/HelpDialog'
@@ -55,13 +56,47 @@ const GEOMETRY_TYPE_FILTERS = [
   { value: 'MultiPolygon', label: 'MultiPolygons only' },
 ]
 
+const FORMAT_LOOKUP = SUPPORTED_FORMATS.reduce((acc, format) => {
+  acc[format.value] = format
+  return acc
+}, {})
+
+const READABLE_FORMATS = SUPPORTED_FORMATS.filter((format) => format.capabilities.read)
+const WRITABLE_FORMATS = SUPPORTED_FORMATS.filter((format) => format.capabilities.write)
+
+const DEFAULT_INPUT_FORMAT =
+  READABLE_FORMATS.find((format) => format.value === 'geojson')?.value ??
+  READABLE_FORMATS[0]?.value ??
+  ''
+
+const DEFAULT_OUTPUT_FORMAT =
+  WRITABLE_FORMATS.find((format) => format.value === 'shapefile')?.value ??
+  WRITABLE_FORMATS.find((format) => format.value === 'geojson')?.value ??
+  WRITABLE_FORMATS[0]?.value ??
+  ''
+
+const INPUT_ACCEPT_ATTRIBUTE = Array.from(
+  new Set(
+    READABLE_FORMATS.flatMap((format) =>
+      Array.isArray(format.extensions) ? format.extensions : []
+    )
+  )
+)
+  .map((ext) => {
+    if (!ext) return null
+    const normalized = ext.startsWith('.') ? ext : `.${ext}`
+    return normalized.toLowerCase()
+  })
+  .filter(Boolean)
+  .join(',')
+
 function App() {
   const [gdalVersion, setGdalVersion] = useState('Initializing...')
   const [isInitializing, setIsInitializing] = useState(true)
   const [isConverting, setIsConverting] = useState(false)
   const [selectedFile, setSelectedFile] = useState(null)
-  const [inputFormat, setInputFormat] = useState('geojson')
-  const [outputFormat, setOutputFormat] = useState('shapefile')
+  const [inputFormat, setInputFormat] = useState(DEFAULT_INPUT_FORMAT)
+  const [outputFormat, setOutputFormat] = useState(DEFAULT_OUTPUT_FORMAT)
   const [formatAutoDetected, setFormatAutoDetected] = useState(false)
   const [sourceCrs, setSourceCrs] = useState('')
   const [targetCrs, setTargetCrs] = useState('')
@@ -116,27 +151,28 @@ function App() {
   }, []);
 
   const detectFormatFromFile = (filename) => {
-    const ext = filename.toLowerCase().split('.').pop()
+    if (!filename) return null
 
-    // Map file extensions to formats
-    const extensionMap = {
-      'json': 'geojson',
-      'geojson': 'geojson',
-      'topojson': 'topojson',
-      'zip': 'shapefile',
-      'shp': 'shapefile',
-      'gpkg': 'geopackage',
-      'kml': 'kml',
-      'gpx': 'gpx',
-      'gml': 'gml',
-      'fgb': 'flatgeobuf',
-      'csv': 'csv',
-      'pmtiles': 'pmtiles',
-      'mbtiles': 'mbtiles',
-      'dxf': 'dxf',
+    const lowerName = filename.toLowerCase()
+    let matchedFormat = null
+    let longestMatch = 0
+
+    for (const format of SUPPORTED_FORMATS) {
+      if (!Array.isArray(format.extensions)) continue
+      for (const rawExtension of format.extensions) {
+        if (!rawExtension) continue
+        const normalized = rawExtension.startsWith('.')
+          ? rawExtension.toLowerCase()
+          : `.${rawExtension.toLowerCase()}`
+
+        if (lowerName.endsWith(normalized) && normalized.length > longestMatch) {
+          matchedFormat = format.value
+          longestMatch = normalized.length
+        }
+      }
     }
 
-    return extensionMap[ext] || 'geojson' // Default to geojson
+    return matchedFormat
   }
 
   const handleFileChange = (e) => {
@@ -147,14 +183,22 @@ function App() {
 
       // Auto-detect input format from file extension
       const detectedFormat = detectFormatFromFile(file.name)
-      setInputFormat(detectedFormat)
-      setFormatAutoDetected(true)
+      const nextInputFormat = detectedFormat ?? DEFAULT_INPUT_FORMAT
 
-      // Smart output format suggestion: if converting from shapefile, suggest geojson, vice versa
-      if (detectedFormat === 'shapefile') {
+      setInputFormat(nextInputFormat)
+      setFormatAutoDetected(Boolean(detectedFormat))
+
+      const geojsonAvailable = WRITABLE_FORMATS.some((format) => format.value === 'geojson')
+      const shapefileAvailable = WRITABLE_FORMATS.some((format) => format.value === 'shapefile')
+
+      if (detectedFormat === 'shapefile' && geojsonAvailable) {
         setOutputFormat('geojson')
-      } else if (detectedFormat === 'geojson') {
+      } else if (detectedFormat === 'geojson' && shapefileAvailable) {
         setOutputFormat('shapefile')
+      } else if (!WRITABLE_FORMATS.some((format) => format.value === outputFormat)) {
+        setOutputFormat(DEFAULT_OUTPUT_FORMAT)
+      } else if (detectedFormat && !FORMAT_LOOKUP[detectedFormat]?.capabilities.write) {
+        setOutputFormat(DEFAULT_OUTPUT_FORMAT)
       }
     }
   }
@@ -371,7 +415,7 @@ function App() {
       // Create blob for download
       const baseName = selectedFile.name.replace(/\.[^/.]+$/, '')
       const outputBlob = new Blob([outputArray], { type: 'application/octet-stream' })
-      const outputExt = SUPPORTED_FORMATS.find(f => f.value === outputFormat)?.ext || '.dat'
+      const outputExt = FORMAT_LOOKUP[outputFormat]?.downloadExt || '.dat'
 
       // Trigger download
       const url = URL.createObjectURL(outputBlob)
@@ -474,23 +518,8 @@ function App() {
 
           {/* 3 Column Layout */}
           <motion.div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-            {/* Left Sidebar - Updates & Supported Formats */}
-            <div className="lg:col-span-3 space-y-4">
-              <motion.aside
-                initial={{ opacity: 0, x: -20 }}
-                animate={{ opacity: 1, x: 0 }}
-                transition={{ duration: 0.6, delay: 0.4 }}
-                className="bg-emerald-500/10 border border-emerald-500/30 rounded-xl px-4 py-4 text-sm text-emerald-200 shadow-2xl"
-              >
-                <div className="relative">
-                  <InformationCircleIcon className="-top-1 -right-1 absolute w-5 h-5 mt-0.5 text-emerald-300" />
-                    <p className="font-medium text-emerald-100 mb-1">Latest update</p>
-                    <p className="text-emerald-200/90 leading-relaxed">
-                      Coordinate reprojection is now fixed for both the preview map and the main conversion workflow.
-                    </p>
-                </div>
-              </motion.aside>
-
+            {/* Left Sidebar - Supported Formats */}
+            <div className="lg:col-span-3">
               <SupportedFormats className="w-full" />
             </div>
 
@@ -527,7 +556,7 @@ function App() {
                   onChange={handleFileChange}
                   className="hidden"
                   id="file-upload"
-                  accept=".json,.geojson,.zip,.gpkg,.kml,.gpx,.gml,.fgb,.csv,.pmtiles,.mbtiles"
+                  accept={INPUT_ACCEPT_ATTRIBUTE}
                 />
                 <label
                   htmlFor="file-upload"
@@ -576,11 +605,16 @@ function App() {
                     }}
                     className={formatAutoDetected ? 'ring-2 ring-emerald-500/30' : ''}
                   >
-                    {SUPPORTED_FORMATS.map((format) => (
-                      <option key={format.value} value={format.value}>
-                        {format.label}
-                      </option>
-                    ))}
+                    {READABLE_FORMATS.map((format) => {
+                      const optionLabel = format.capabilities.write
+                        ? format.label
+                        : `${format.label} (input only)`
+                      return (
+                        <option key={format.value} value={format.value}>
+                          {optionLabel}
+                        </option>
+                      )
+                    })}
                   </Select>
                 </Field>
 
@@ -591,11 +625,16 @@ function App() {
                     value={outputFormat}
                     onChange={(e) => setOutputFormat(e.target.value)}
                   >
-                    {SUPPORTED_FORMATS.map((format) => (
-                      <option key={format.value} value={format.value}>
-                        {format.label}
-                      </option>
-                    ))}
+                    {WRITABLE_FORMATS.map((format) => {
+                      const optionLabel = format.capabilities.read
+                        ? format.label
+                        : `${format.label} (output only)`
+                      return (
+                        <option key={format.value} value={format.value}>
+                          {optionLabel}
+                        </option>
+                      )
+                    })}
                   </Select>
                 </Field>
               </div>
@@ -976,8 +1015,11 @@ function App() {
               </div>
             </motion.div>
 
-            {/* Right Sidebar - Feedback Form */}
-            <FeedbackForm />
+            {/* Right Sidebar - Updates & Feedback */}
+            <div className="lg:col-span-3 space-y-4">
+              <ChangelogCard />
+              <FeedbackForm className="w-full" />
+            </div>
           </motion.div>
 
           {/* Info Footer */}

@@ -2,6 +2,14 @@
 
 All notable changes to GeoConverter will be documented in this file.
 
+## Unreleased
+
+### Added
+- Support for additional GDAL vector drivers in the UI and WebAssembly pipeline (DGN, GeoJSONSeq, GeoRSS, Geoconcept, JML, JSON-FG, MapML, ODS, OGR GMT, PCIDSK, PDS4, S-57, SQLite, Selafin, VDV, VICAR, WAsP, XLSX)
+- Playwright smoke tests covering a subset of the new output formats
+- Documentation updates detailing the expanded format matrix
+- Updated format selector to surface Input/Output capability labels, including TopoJSON (input only) and PGDump (output only)
+
 ## 1.0.1 - 2025-01-13
 
 ### Added
