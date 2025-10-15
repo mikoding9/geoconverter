@@ -477,7 +477,7 @@ function App() {
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.6, delay: 0.5 }}
-              className="lg:col-span-6"
+              className="order-first lg:order-none lg:col-span-6"
             >
               {/* Conversion Form */}
               <div className="bg-zinc-900/90 backdrop-blur-md border border-zinc-700/50 rounded-2xl p-8 space-y-8 shadow-2xl">
