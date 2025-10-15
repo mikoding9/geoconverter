@@ -35,7 +35,7 @@ export function HelpDialog({ isOpen, onClose }) {
                   <h3 className="text-lg font-semibold text-emerald-400">What is GeoConverter?</h3>
                   <p className="text-zinc-300 leading-relaxed">
                     GeoConverter is a powerful, privacy-first geospatial file converter that runs entirely in your browser.
-                    Transform vector data between 10 different GIS formats without uploading files to any server.
+                    Transform vector data between 30+ different GIS formats without uploading files to any server.
                     All processing happens locally using WebAssembly, powered by GDAL/OGR - the industry-standard geospatial library.
                   </p>
                 </section>
