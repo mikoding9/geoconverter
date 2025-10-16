@@ -281,6 +281,17 @@ static bool transformExtentToWgs84(const OGREnvelope& extent,
 
     debugInfo += "Using source CRS: " + sourceCrs + "; ";
 
+    // Quick check: if the CRS string indicates WGS84/EPSG:4326, skip transformation
+    std::string lowerCrs = toLower(sourceCrs);
+    if (lowerCrs == "epsg:4326" ||
+        lowerCrs == "wgs84" ||
+        lowerCrs == "wgs 84" ||
+        lowerCrs.find("wgs84") != std::string::npos ||
+        lowerCrs.find("wgs 84") != std::string::npos) {
+        debugInfo += "Already WGS84 (detected from CRS string), skipping; ";
+        return false;
+    }
+
     OGRSpatialReference srcSrs;
     OGRErr err = srcSrs.SetFromUserInput(sourceCrs.c_str());
     if (err != OGRERR_NONE) {

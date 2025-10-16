@@ -134,13 +134,39 @@ function App() {
   // Help dialog state
   const [showHelp, setShowHelp] = useState(false)
 
+  // Drag and drop state
+  const [isDragging, setIsDragging] = useState(false)
+
   const debugTransformMessage = previewData?.debugTransform || ''
+
+  // Check if the CRS is already WGS84 (EPSG:4326)
+  const crs = previewData?.crs || ''
+  const isAlreadyWgs84 =
+    crs === 'EPSG:4326' ||
+    crs === 'WGS84' ||
+    crs === 'WGS 84' ||
+    crs.includes('WGS84') ||
+    debugTransformMessage.includes('Already WGS84')
+
+  // Only show reprojection failure message if:
+  // 1. Reprojection was actually attempted (bboxReprojected === false)
+  // 2. There's a bboxOriginal (meaning coordinates exist)
+  // 3. There's a debug message explaining the failure
+  // 4. The failure wasn't due to:
+  //    - Already being in WGS84 (no transform needed)
+  //    - Missing source CRS info (can't determine what to transform from)
+  //    - No CRS provided by user (auto-detect scenario with no embedded CRS)
+  const isNoTransformNeeded =
+    isAlreadyWgs84 ||
+    debugTransformMessage.includes('Source CRS is empty') ||
+    debugTransformMessage.includes('No reprojection needed') ||
+    (debugTransformMessage.includes('No sourceCrs provided') && crs === 'Unknown')
+
   const showBboxReprojectionFailure =
     previewData?.bboxReprojected === false &&
     Boolean(previewData?.bboxOriginal) &&
     debugTransformMessage &&
-    !debugTransformMessage.includes('Already WGS84') &&
-    !debugTransformMessage.includes('Source CRS is empty')
+    !isNoTransformNeeded
 
   useEffect(() => {
     initCppJs().then(() => {
@@ -177,28 +203,64 @@ function App() {
   const handleFileChange = (e) => {
     const file = e.target.files?.[0]
     if (file) {
-      setSelectedFile(file)
-      setPreviewData(null) // Reset preview data
+      processFile(file)
+    }
+  }
 
-      // Auto-detect input format from file extension
-      const detectedFormat = detectFormatFromFile(file.name)
-      const nextInputFormat = detectedFormat ?? DEFAULT_INPUT_FORMAT
+  const processFile = (file) => {
+    setSelectedFile(file)
+    setPreviewData(null) // Reset preview data
 
-      setInputFormat(nextInputFormat)
-      setFormatAutoDetected(Boolean(detectedFormat))
+    // Auto-detect input format from file extension
+    const detectedFormat = detectFormatFromFile(file.name)
+    const nextInputFormat = detectedFormat ?? DEFAULT_INPUT_FORMAT
 
-      const geojsonAvailable = WRITABLE_FORMATS.some((format) => format.value === 'geojson')
-      const shapefileAvailable = WRITABLE_FORMATS.some((format) => format.value === 'shapefile')
+    setInputFormat(nextInputFormat)
+    setFormatAutoDetected(Boolean(detectedFormat))
 
-      if (detectedFormat === 'shapefile' && geojsonAvailable) {
-        setOutputFormat('geojson')
-      } else if (detectedFormat === 'geojson' && shapefileAvailable) {
-        setOutputFormat('shapefile')
-      } else if (!WRITABLE_FORMATS.some((format) => format.value === outputFormat)) {
-        setOutputFormat(DEFAULT_OUTPUT_FORMAT)
-      } else if (detectedFormat && !FORMAT_LOOKUP[detectedFormat]?.capabilities.write) {
-        setOutputFormat(DEFAULT_OUTPUT_FORMAT)
-      }
+    const geojsonAvailable = WRITABLE_FORMATS.some((format) => format.value === 'geojson')
+    const shapefileAvailable = WRITABLE_FORMATS.some((format) => format.value === 'shapefile')
+
+    if (detectedFormat === 'shapefile' && geojsonAvailable) {
+      setOutputFormat('geojson')
+    } else if (detectedFormat === 'geojson' && shapefileAvailable) {
+      setOutputFormat('shapefile')
+    } else if (!WRITABLE_FORMATS.some((format) => format.value === outputFormat)) {
+      setOutputFormat(DEFAULT_OUTPUT_FORMAT)
+    } else if (detectedFormat && !FORMAT_LOOKUP[detectedFormat]?.capabilities.write) {
+      setOutputFormat(DEFAULT_OUTPUT_FORMAT)
+    }
+  }
+
+  const handleDragEnter = (e) => {
+    e.preventDefault()
+    e.stopPropagation()
+    setIsDragging(true)
+  }
+
+  const handleDragLeave = (e) => {
+    e.preventDefault()
+    e.stopPropagation()
+    // Only set to false if we're leaving the drop zone entirely
+    if (e.currentTarget === e.target) {
+      setIsDragging(false)
+    }
+  }
+
+  const handleDragOver = (e) => {
+    e.preventDefault()
+    e.stopPropagation()
+  }
+
+  const handleDrop = (e) => {
+    e.preventDefault()
+    e.stopPropagation()
+    setIsDragging(false)
+
+    const files = e.dataTransfer?.files
+    if (files && files.length > 0) {
+      const file = files[0]
+      processFile(file)
     }
   }
 
@@ -481,7 +543,7 @@ function App() {
             >
               {/* Conversion Form */}
               <div className="bg-zinc-900/90 backdrop-blur-md border border-zinc-700/50 rounded-2xl p-8 space-y-8 shadow-2xl">
-                {/* File Upload */}
+                {/* File Selection */}
                 <div className="space-y-3">
                   <div className="flex items-center justify-between">
                     <label className="block text-sm font-medium text-zinc-300">
@@ -502,24 +564,38 @@ function App() {
                       type="file"
                       onChange={handleFileChange}
                       className="hidden"
-                      id="file-upload"
+                      id="file-select"
                       accept={INPUT_ACCEPT_ATTRIBUTE}
                     />
                     <label
-                      htmlFor="file-upload"
+                      htmlFor="file-select"
+                      onDragEnter={handleDragEnter}
+                      onDragLeave={handleDragLeave}
+                      onDragOver={handleDragOver}
+                      onDrop={handleDrop}
                       className={clsx(
                         'flex items-center justify-center gap-3 px-6 py-12',
                         'border-2 border-dashed rounded-xl cursor-pointer',
                         'transition-all duration-200',
-                        selectedFile
-                          ? 'border-emerald-500/50 bg-emerald-500/5'
-                          : 'border-zinc-700 hover:border-zinc-600 bg-zinc-900/30'
+                        isDragging && 'border-emerald-400 bg-emerald-500/10 scale-[1.02]',
+                        !isDragging && selectedFile && 'border-emerald-500/50 bg-emerald-500/5',
+                        !isDragging && !selectedFile && 'border-zinc-700 hover:border-zinc-600 bg-zinc-900/30'
                       )}
                     >
-                      <DocumentArrowUpIcon className="w-8 h-8 text-zinc-400" />
+                      <DocumentArrowUpIcon className={clsx(
+                        'w-8 h-8',
+                        isDragging ? 'text-emerald-400' : 'text-zinc-400'
+                      )} />
                       <div className="text-center">
-                        <p className="text-zinc-300 font-medium">
-                          {selectedFile ? selectedFile.name : 'Drop your file here or click to browse'}
+                        <p className={clsx(
+                          'font-medium',
+                          isDragging ? 'text-emerald-300' : 'text-zinc-300'
+                        )}>
+                          {isDragging
+                            ? 'Drop your file here'
+                            : selectedFile
+                            ? selectedFile.name
+                            : 'Drop your file here or click to browse'}
                         </p>
                         <p className="text-sm text-zinc-500 mt-1">
                           {selectedFile

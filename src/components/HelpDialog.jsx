@@ -35,7 +35,7 @@ export function HelpDialog({ isOpen, onClose }) {
                   <h3 className="text-lg font-semibold text-emerald-400">What is GeoConverter?</h3>
                   <p className="text-zinc-300 leading-relaxed">
                     GeoConverter is a powerful, privacy-first geospatial file converter that runs entirely in your browser.
-                    Transform vector data between 30+ different GIS formats without uploading files to any server.
+                    Transform vector data between 30+ different GIS formats without sending files to any server.
                     All processing happens locally using WebAssembly, powered by GDAL/OGR - the industry-standard geospatial library.
                   </p>
                 </section>
@@ -75,7 +75,7 @@ export function HelpDialog({ isOpen, onClose }) {
                       <div className="flex items-start gap-3">
                         <span className="flex-shrink-0 w-6 h-6 rounded-full bg-emerald-500/20 text-emerald-400 flex items-center justify-center text-sm font-semibold">1</span>
                         <div>
-                          <h4 className="font-semibold text-zinc-200 mb-1">Upload Your File</h4>
+                          <h4 className="font-semibold text-zinc-200 mb-1">Select Your File</h4>
                           <p className="text-sm text-zinc-400">Drag & drop or click to select a geospatial file. We auto-detect the format!</p>
                         </div>
                       </div>
@@ -242,7 +242,7 @@ export function HelpDialog({ isOpen, onClose }) {
                   </div>
                   <p className="text-sm text-zinc-300 leading-relaxed">
                     All file processing happens entirely in your browser using WebAssembly.
-                    Your files are never uploaded to any server, and we don't collect or store any of your data.
+                    Your files are never sent to any server, and we don't collect or store any of your data.
                     This is true client-side computing - your data remains private and secure on your device.
                   </p>
                 </section>
