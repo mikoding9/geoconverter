@@ -4,11 +4,13 @@ import { Select } from '@/components/select'
 import { Input } from '@/components/input'
 import { Field, Label, Fieldset, FieldGroup } from '@/components/fieldset'
 import { Switch } from '@/components/switch'
+import { Dropdown, DropdownButton, DropdownMenu, DropdownItem, DropdownLabel } from '@/components/dropdown'
 import {
   ArrowPathIcon,
   DocumentArrowUpIcon,
   ArrowDownTrayIcon,
-  EyeIcon
+  EyeIcon,
+  ChevronDownIcon
 } from '@heroicons/react/24/outline'
 import { motion } from 'motion/react'
 import clsx from 'clsx'
@@ -93,7 +95,7 @@ function App() {
   const [gdalVersion, setGdalVersion] = useState('Initializing...')
   const [isInitializing, setIsInitializing] = useState(true)
   const [isConverting, setIsConverting] = useState(false)
-  const [selectedFile, setSelectedFile] = useState(null)
+  const [selectedFiles, setSelectedFiles] = useState([])
   const [inputFormat, setInputFormat] = useState(DEFAULT_INPUT_FORMAT)
   const [outputFormat, setOutputFormat] = useState(DEFAULT_OUTPUT_FORMAT)
   const [formatAutoDetected, setFormatAutoDetected] = useState(false)
@@ -200,19 +202,54 @@ function App() {
     return matchedFormat
   }
 
+  const isFileSupported = (filename) => {
+    return detectFormatFromFile(filename) !== null
+  }
+
   const handleFileChange = (e) => {
-    const file = e.target.files?.[0]
-    if (file) {
-      processFile(file)
+    const files = Array.from(e.target.files || [])
+    if (files.length > 0) {
+      processFiles(files)
     }
   }
 
-  const processFile = (file) => {
-    setSelectedFile(file)
+  const processFiles = (files) => {
+    if (!files || files.length === 0) return
+
+    // Validate files and separate supported from unsupported
+    const supportedFiles = []
+    const unsupportedFiles = []
+
+    files.forEach(file => {
+      if (isFileSupported(file.name)) {
+        supportedFiles.push(file)
+      } else {
+        unsupportedFiles.push(file.name)
+      }
+    })
+
+    // Show error for unsupported files
+    if (unsupportedFiles.length > 0) {
+      const fileList = unsupportedFiles.slice(0, 5).join(', ')
+      const extra = unsupportedFiles.length > 5 ? ` and ${unsupportedFiles.length - 5} more` : ''
+      setToast({
+        isOpen: true,
+        message: `Unsupported file format${unsupportedFiles.length > 1 ? 's' : ''}: ${fileList}${extra}`,
+        type: 'error'
+      })
+    }
+
+    // If no supported files, return early
+    if (supportedFiles.length === 0) {
+      return
+    }
+
+    setSelectedFiles(supportedFiles)
     setPreviewData(null) // Reset preview data
 
-    // Auto-detect input format from file extension
-    const detectedFormat = detectFormatFromFile(file.name)
+    // Auto-detect input format from first file's extension
+    const firstFile = supportedFiles[0]
+    const detectedFormat = detectFormatFromFile(firstFile.name)
     const nextInputFormat = detectedFormat ?? DEFAULT_INPUT_FORMAT
 
     setInputFormat(nextInputFormat)
@@ -252,20 +289,73 @@ function App() {
     e.stopPropagation()
   }
 
-  const handleDrop = (e) => {
+  const handleDrop = async (e) => {
     e.preventDefault()
     e.stopPropagation()
     setIsDragging(false)
 
-    const files = e.dataTransfer?.files
-    if (files && files.length > 0) {
-      const file = files[0]
-      processFile(file)
+    const items = e.dataTransfer?.items
+    if (!items) {
+      const files = Array.from(e.dataTransfer?.files || [])
+      if (files.length > 0) {
+        processFiles(files)
+      }
+      return
+    }
+
+    // Handle folders and multiple files
+    const allFiles = []
+    const entries = Array.from(items).map(item => item.webkitGetAsEntry())
+
+    const readEntry = async (entry) => {
+      if (entry.isFile) {
+        return new Promise((resolve) => {
+          entry.file((file) => resolve(file))
+        })
+      } else if (entry.isDirectory) {
+        const dirReader = entry.createReader()
+        return new Promise((resolve) => {
+          const files = []
+          const readEntries = () => {
+            dirReader.readEntries(async (entries) => {
+              if (entries.length === 0) {
+                resolve(files)
+              } else {
+                for (const entry of entries) {
+                  const result = await readEntry(entry)
+                  if (Array.isArray(result)) {
+                    files.push(...result)
+                  } else if (result) {
+                    files.push(result)
+                  }
+                }
+                readEntries()
+              }
+            })
+          }
+          readEntries()
+        })
+      }
+    }
+
+    for (const entry of entries) {
+      if (entry) {
+        const result = await readEntry(entry)
+        if (Array.isArray(result)) {
+          allFiles.push(...result)
+        } else if (result) {
+          allFiles.push(result)
+        }
+      }
+    }
+
+    if (allFiles.length > 0) {
+      processFiles(allFiles)
     }
   }
 
-  const extractPreviewData = async () => {
-    if (!selectedFile || isInitializing) return
+  const extractPreviewData = async (fileToPreview = null) => {
+    if (!selectedFiles || selectedFiles.length === 0 || isInitializing) return
 
     // Check if the module is initialized
     if (!Native || !VectorUint8) {
@@ -278,7 +368,8 @@ function App() {
     }
 
     try {
-      // Read file as ArrayBuffer
+      // Use specified file or default to first file
+      const selectedFile = fileToPreview || selectedFiles[0]
       const arrayBuffer = await selectedFile.arrayBuffer()
       const inputArray = new Uint8Array(arrayBuffer)
 
@@ -291,8 +382,11 @@ function App() {
       // Get final source CRS (use custom if 'custom' is selected)
       const finalSourceCrs = sourceCrs === 'custom' ? customSourceCrs : sourceCrs
 
+      // Detect format for this specific file
+      const fileFormat = detectFormatFromFile(selectedFile.name) || inputFormat
+
       // Call native GDAL method to extract metadata with user-selected CRS
-      const jsonString = Native.getVectorInfo(inputVector, inputFormat, finalSourceCrs)
+      const jsonString = Native.getVectorInfo(inputVector, fileFormat, finalSourceCrs)
       inputVector.delete()
 
       // Parse the JSON response
@@ -394,114 +488,145 @@ function App() {
   }
 
   const handleConvert = async () => {
-    if (!selectedFile) return
+    if (!selectedFiles || selectedFiles.length === 0) return
 
     try {
       setIsConverting(true)
 
-      let inputArray
-      let actualInputFormat = inputFormat
+      let successCount = 0
+      let failCount = 0
+      const errors = []
 
-      // Handle ZIP files for shapefiles
-      if (selectedFile.name.endsWith('.zip') && inputFormat === 'shapefile') {
-        // Extract the shapefile from ZIP
-        const arrayBuffer = await selectedFile.arrayBuffer()
-        const zip = await JSZip.loadAsync(arrayBuffer)
+      // Process each file
+      for (let fileIndex = 0; fileIndex < selectedFiles.length; fileIndex++) {
+        const selectedFile = selectedFiles[fileIndex]
 
-        // Find the .shp file in the ZIP
-        const shpFile = Object.keys(zip.files).find(name => name.endsWith('.shp'))
-        if (!shpFile) {
-          throw new Error('No .shp file found in the ZIP archive')
+        try {
+          let inputArray
+          let actualInputFormat = detectFormatFromFile(selectedFile.name) || inputFormat
+
+          // Handle ZIP files for shapefiles
+          if (selectedFile.name.endsWith('.zip') && actualInputFormat === 'shapefile') {
+            // Extract the shapefile from ZIP
+            const arrayBuffer = await selectedFile.arrayBuffer()
+            const zip = await JSZip.loadAsync(arrayBuffer)
+
+            // Find the .shp file in the ZIP
+            const shpFile = Object.keys(zip.files).find(name => name.endsWith('.shp'))
+            if (!shpFile) {
+              throw new Error('No .shp file found in the ZIP archive')
+            }
+
+            // For now, we need to pass the whole ZIP to GDAL
+            // GDAL can read from /vsizip/ paths
+            inputArray = new Uint8Array(arrayBuffer)
+          } else {
+            // Read the file as ArrayBuffer
+            const arrayBuffer = await selectedFile.arrayBuffer()
+            inputArray = new Uint8Array(arrayBuffer)
+          }
+
+          // Create a C++ vector from the Uint8Array
+          const inputVector = new VectorUint8()
+          for (let i = 0; i < inputArray.length; i++) {
+            inputVector.push_back(inputArray[i])
+          }
+
+          // Get final CRS values (use custom if 'custom' is selected)
+          const finalSourceCrs = sourceCrs === 'custom' ? customSourceCrs : sourceCrs
+          const finalTargetCrs = targetCrs === 'custom' ? customTargetCrs : targetCrs
+
+          // Convert using GDAL through WebAssembly
+          const outputVector = Native.convertVector(
+            inputVector,
+            actualInputFormat,
+            outputFormat,
+            finalSourceCrs,
+            finalTargetCrs,
+            layerName,
+            geometryTypeFilter,
+            skipFailures,
+            makeValid,
+            keepZ,
+            whereClause,
+            selectFields,
+            simplifyTolerance,
+            explodeCollections,
+            preserveFid,
+            geojsonPrecision,
+            csvGeometryMode
+          )
+
+          if (!outputVector || outputVector.size() === 0) {
+            inputVector.delete()
+            if (outputVector) outputVector.delete()
+            const lastError = typeof Native.getLastError === 'function' ? Native.getLastError() : ''
+            throw new Error(lastError || 'Conversion failed - output is empty')
+          }
+
+          // Convert C++ vector back to Uint8Array
+          const outputSize = outputVector.size()
+          const outputArray = new Uint8Array(outputSize)
+          for (let i = 0; i < outputSize; i++) {
+            outputArray[i] = outputVector.get(i)
+          }
+
+          // Clean up C++ objects
+          inputVector.delete()
+          outputVector.delete()
+
+          // Create blob for download
+          const baseName = selectedFile.name.replace(/\.[^/.]+$/, '')
+          const outputBlob = new Blob([outputArray], { type: 'application/octet-stream' })
+          const outputExt = FORMAT_LOOKUP[outputFormat]?.downloadExt || '.dat'
+
+          // Trigger download
+          const url = URL.createObjectURL(outputBlob)
+          const a = document.createElement('a')
+          a.href = url
+          a.download = `${baseName}${outputExt}`
+
+          document.body.appendChild(a)
+          a.click()
+          document.body.removeChild(a)
+          URL.revokeObjectURL(url)
+
+          successCount++
+        } catch (error) {
+          failCount++
+          const nativeError = typeof Native.getLastError === 'function' ? Native.getLastError() : ''
+          console.error(`Conversion error for ${selectedFile.name}:`, error, nativeError ? `Native: ${nativeError}` : '')
+          errors.push(`${selectedFile.name}: ${nativeError || error.message}`)
         }
+      }
 
-        // For now, we need to pass the whole ZIP to GDAL
-        // GDAL can read from /vsizip/ paths
-        inputArray = new Uint8Array(arrayBuffer)
+      // Show summary toast
+      if (successCount > 0 && failCount === 0) {
+        setToast({
+          isOpen: true,
+          message: `Successfully converted ${successCount} file${successCount > 1 ? 's' : ''}!`,
+          type: 'success'
+        })
+      } else if (successCount > 0 && failCount > 0) {
+        setToast({
+          isOpen: true,
+          message: `Converted ${successCount} file${successCount > 1 ? 's' : ''}, ${failCount} failed. Check console for details.`,
+          type: 'error'
+        })
+        console.error('Failed conversions:', errors)
       } else {
-        // Read the file as ArrayBuffer
-        const arrayBuffer = await selectedFile.arrayBuffer()
-        inputArray = new Uint8Array(arrayBuffer)
+        setToast({
+          isOpen: true,
+          message: `All conversions failed. ${errors[0] || 'Unknown error'}`,
+          type: 'error'
+        })
       }
-
-      // Create a C++ vector from the Uint8Array
-      const inputVector = new VectorUint8()
-      for (let i = 0; i < inputArray.length; i++) {
-        inputVector.push_back(inputArray[i])
-      }
-
-      // Get final CRS values (use custom if 'custom' is selected)
-      const finalSourceCrs = sourceCrs === 'custom' ? customSourceCrs : sourceCrs
-      const finalTargetCrs = targetCrs === 'custom' ? customTargetCrs : targetCrs
-
-      // Convert using GDAL through WebAssembly
-      const outputVector = Native.convertVector(
-        inputVector,
-        actualInputFormat,
-        outputFormat,
-        finalSourceCrs,
-        finalTargetCrs,
-        layerName,
-        geometryTypeFilter,
-        skipFailures,
-        makeValid,
-        keepZ,
-        whereClause,
-        selectFields,
-        simplifyTolerance,
-        explodeCollections,
-        preserveFid,
-        geojsonPrecision,
-        csvGeometryMode
-      )
-
-      if (!outputVector || outputVector.size() === 0) {
-        inputVector.delete()
-        if (outputVector) outputVector.delete()
-        console.log(Native.getLastError())
-        const lastError = typeof Native.getLastError === 'function' ? Native.getLastError() : ''
-        throw new Error(lastError || 'Conversion failed - output is empty')
-      }
-
-      // Convert C++ vector back to Uint8Array
-      const outputSize = outputVector.size()
-      const outputArray = new Uint8Array(outputSize)
-      for (let i = 0; i < outputSize; i++) {
-        outputArray[i] = outputVector.get(i)
-      }
-
-      // Clean up C++ objects
-      inputVector.delete()
-      outputVector.delete()
-
-      // Create blob for download
-      const baseName = selectedFile.name.replace(/\.[^/.]+$/, '')
-      const outputBlob = new Blob([outputArray], { type: 'application/octet-stream' })
-      const outputExt = FORMAT_LOOKUP[outputFormat]?.downloadExt || '.dat'
-
-      // Trigger download
-      const url = URL.createObjectURL(outputBlob)
-      const a = document.createElement('a')
-      a.href = url
-      a.download = `${baseName}${outputExt}`
-
-      document.body.appendChild(a)
-      a.click()
-      document.body.removeChild(a)
-      URL.revokeObjectURL(url)
-
-      // Show success toast
-      setToast({
-        isOpen: true,
-        message: 'Conversion successful! Your file is downloading.',
-        type: 'success'
-      })
 
     } catch (error) {
-      const nativeError = typeof Native.getLastError === 'function' ? Native.getLastError() : ''
-      console.error('Conversion error:', error, nativeError ? `Native: ${nativeError}` : '')
+      console.error('Conversion error:', error)
       setToast({
         isOpen: true,
-        message: `Conversion failed: ${nativeError || error.message}`,
+        message: `Conversion failed: ${error.message}`,
         type: 'error'
       })
     } finally {
@@ -547,17 +672,49 @@ function App() {
                 <div className="space-y-3">
                   <div className="flex items-center justify-between">
                     <label className="block text-sm font-medium text-zinc-300">
-                      Input File
+                      Input Files
                     </label>
-                    <button
-                      type="button"
-                      onClick={extractPreviewData}
-                      disabled={!selectedFile|| isInitializing || resolvingSourceCrs || resolvingTargetCrs}
-                      className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-zinc-400 hover:text-emerald-400 bg-zinc-900/50 hover:bg-zinc-800/50 border border-zinc-800 hover:border-emerald-500/30 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:text-zinc-400 disabled:hover:border-zinc-800"
-                    >
-                      <EyeIcon className="w-4 h-4" />
-                      <span>Preview</span>
-                    </button>
+                    {selectedFiles.length === 0 ? (
+                      <button
+                        type="button"
+                        disabled
+                        className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-zinc-400 bg-zinc-900/50 border border-zinc-800 rounded-lg opacity-50 cursor-not-allowed"
+                      >
+                        <EyeIcon className="w-4 h-4" />
+                        <span>Preview</span>
+                      </button>
+                    ) : selectedFiles.length === 1 ? (
+                      <button
+                        type="button"
+                        onClick={() => extractPreviewData(selectedFiles[0])}
+                        disabled={isInitializing || resolvingSourceCrs || resolvingTargetCrs}
+                        className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-zinc-400 hover:text-emerald-400 bg-zinc-900/50 hover:bg-zinc-800/50 border border-zinc-800 hover:border-emerald-500/30 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:text-zinc-400 disabled:hover:border-zinc-800"
+                      >
+                        <EyeIcon className="w-4 h-4" />
+                        <span>Preview</span>
+                      </button>
+                    ) : (
+                      <Dropdown>
+                        <DropdownButton
+                          as="button"
+                          disabled={isInitializing || resolvingSourceCrs || resolvingTargetCrs}
+                          className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-zinc-400 hover:text-emerald-400 bg-zinc-900/50 hover:bg-zinc-800/50 border border-zinc-800 hover:border-emerald-500/30 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:text-zinc-400 disabled:hover:border-zinc-800"
+                        >
+                          <EyeIcon className="w-4 h-4" />
+                          <span>Preview</span>
+                          <ChevronDownIcon className="w-3 h-3" />
+                        </DropdownButton>
+                        <DropdownMenu className="max-h-64 overflow-y-auto z-[9999]">
+                          {selectedFiles.map((file, index) => (
+                            <DropdownItem key={index} onClick={() => extractPreviewData(file)}>
+                              <DropdownLabel className="truncate max-w-xs">
+                                {file.name}
+                              </DropdownLabel>
+                            </DropdownItem>
+                          ))}
+                        </DropdownMenu>
+                      </Dropdown>
+                    )}
                   </div>
                   <div className="relative">
                     <input
@@ -566,45 +723,91 @@ function App() {
                       className="hidden"
                       id="file-select"
                       accept={INPUT_ACCEPT_ATTRIBUTE}
+                      multiple
                     />
-                    <label
-                      htmlFor="file-select"
-                      onDragEnter={handleDragEnter}
-                      onDragLeave={handleDragLeave}
-                      onDragOver={handleDragOver}
-                      onDrop={handleDrop}
-                      className={clsx(
-                        'flex items-center justify-center gap-3 px-6 py-12',
-                        'border-2 border-dashed rounded-xl cursor-pointer',
-                        'transition-all duration-200',
-                        isDragging && 'border-emerald-400 bg-emerald-500/10 scale-[1.02]',
-                        !isDragging && selectedFile && 'border-emerald-500/50 bg-emerald-500/5',
-                        !isDragging && !selectedFile && 'border-zinc-700 hover:border-zinc-600 bg-zinc-900/30'
-                      )}
+                    <input
+                      type="file"
+                      onChange={handleFileChange}
+                      className="hidden"
+                      id="folder-select"
+                      webkitdirectory=""
+                      directory=""
+                      multiple
+                    />
+                    <div className="flex gap-2">
+                      <label
+                        htmlFor="file-select"
+                        onDragEnter={handleDragEnter}
+                        onDragLeave={handleDragLeave}
+                        onDragOver={handleDragOver}
+                        onDrop={handleDrop}
+                        className={clsx(
+                          'flex-1 flex items-center justify-center gap-3 px-6 py-12',
+                          'border-2 border-dashed rounded-xl cursor-pointer',
+                          'transition-all duration-200',
+                          isDragging && 'border-emerald-400 bg-emerald-500/10 scale-[1.02]',
+                          !isDragging && selectedFiles.length > 0 && 'border-emerald-500/50 bg-emerald-500/5',
+                          !isDragging && selectedFiles.length === 0 && 'border-zinc-700 hover:border-zinc-600 bg-zinc-900/30'
+                        )}
+                      >
+                        <DocumentArrowUpIcon className={clsx(
+                          'w-8 h-8',
+                          isDragging ? 'text-emerald-400' : 'text-zinc-400'
+                        )} />
+                        <div className="text-center">
+                          <p className={clsx(
+                            'font-medium',
+                            isDragging ? 'text-emerald-300' : 'text-zinc-300'
+                          )}>
+                            {isDragging
+                              ? 'Drop files or folders here'
+                              : selectedFiles.length > 0
+                              ? `${selectedFiles.length} file${selectedFiles.length > 1 ? 's' : ''} selected`
+                              : 'Drop files here or click to browse'}
+                          </p>
+                          <p className="text-sm text-zinc-500 mt-1">
+                            {selectedFiles.length > 0
+                              ? `Total: ${(selectedFiles.reduce((sum, f) => sum + f.size, 0) / 1024).toFixed(2)} KB`
+                              : 'Multiple file selection supported'}
+                          </p>
+                        </div>
+                      </label>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => document.getElementById('folder-select')?.click()}
+                      className="mt-2 w-full px-4 py-2 text-sm text-zinc-400 hover:text-zinc-300 bg-zinc-900/50 hover:bg-zinc-800/50 border border-zinc-800 hover:border-zinc-700 rounded-lg transition-colors"
                     >
-                      <DocumentArrowUpIcon className={clsx(
-                        'w-8 h-8',
-                        isDragging ? 'text-emerald-400' : 'text-zinc-400'
-                      )} />
-                      <div className="text-center">
-                        <p className={clsx(
-                          'font-medium',
-                          isDragging ? 'text-emerald-300' : 'text-zinc-300'
-                        )}>
-                          {isDragging
-                            ? 'Drop your file here'
-                            : selectedFile
-                            ? selectedFile.name
-                            : 'Drop your file here or click to browse'}
-                        </p>
-                        <p className="text-sm text-zinc-500 mt-1">
-                          {selectedFile
-                            ? `${(selectedFile.size / 1024).toFixed(2)} KB`
-                            : 'GeoJSON, Shapefile, GeoPackage, KML, GPX, and more'}
-                        </p>
-                      </div>
-                    </label>
+                      Or select a folder
+                    </button>
                   </div>
+
+                  {/* File List */}
+                  {selectedFiles.length > 0 && (
+                    <div className="mt-4 p-4 bg-zinc-900/50 border border-zinc-800 rounded-lg max-h-48 overflow-y-auto">
+                      <div className="flex items-center justify-between mb-2">
+                        <Text className="text-xs font-medium text-zinc-400">Selected Files</Text>
+                        <button
+                          type="button"
+                          onClick={() => setSelectedFiles([])}
+                          className="text-xs text-red-400 hover:text-red-300"
+                        >
+                          Clear all
+                        </button>
+                      </div>
+                      <div className="space-y-1">
+                        {selectedFiles.map((file, index) => (
+                          <div
+                            key={index}
+                            className="flex items-center justify-between py-1 px-2 hover:bg-zinc-800/30 rounded text-xs"
+                          >
+                            <span className="text-zinc-300 truncate flex-1">{file.name}</span>
+                            <span className="text-zinc-500 ml-2">{(file.size / 1024).toFixed(2)} KB</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                 </div>
 
                 {/* Format Selectors */}
@@ -1019,7 +1222,7 @@ function App() {
                 <Button
                   color="emerald"
                   onClick={handleConvert}
-                  disabled={!selectedFile || isInitializing || isConverting}
+                  disabled={!selectedFiles || selectedFiles.length === 0 || isInitializing || isConverting}
                   className="w-full"
                 >
                   {isInitializing ? (
@@ -1056,7 +1259,7 @@ function App() {
       <PreviewModal
         isOpen={showPreview}
         onClose={() => setShowPreview(false)}
-        selectedFile={selectedFile}
+        selectedFile={selectedFiles.length > 0 ? selectedFiles[0] : null}
         previewData={previewData}
         inputFormat={inputFormat}
         showBboxReprojectionFailure={showBboxReprojectionFailure}

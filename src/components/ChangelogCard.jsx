@@ -13,7 +13,7 @@ export function ChangelogCard() {
         <InformationCircleIcon className="-top-1 -right-1 absolute w-5 h-5 mt-0.5 text-emerald-300" />
         <p className="font-medium text-emerald-100 mb-1">Latest update</p>
         <p className="text-emerald-200/90 leading-relaxed">
-          Coordinate reprojection is now fixed for both the preview map and the main conversion workflow.
+          Now supports multiple file selection and folder uploads! Batch convert files with automatic format detection. Unsupported files are filtered with clear error messages.
         </p>
       </div>
     </motion.aside>

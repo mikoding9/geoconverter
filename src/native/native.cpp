@@ -32,6 +32,36 @@ static std::string toLower(std::string s) {
     return s;
 }
 
+// Escape special characters for JSON string values
+static std::string escapeJsonString(const std::string& input) {
+    std::string output;
+    output.reserve(input.size());
+
+    for (char c : input) {
+        switch (c) {
+            case '"':  output += "\\\""; break;
+            case '\\': output += "\\\\"; break;
+            case '\b': output += "\\b"; break;
+            case '\f': output += "\\f"; break;
+            case '\n': output += "\\n"; break;
+            case '\r': output += "\\r"; break;
+            case '\t': output += "\\t"; break;
+            default:
+                if (c < 0x20) {
+                    // Control characters
+                    char buf[7];
+                    snprintf(buf, sizeof(buf), "\\u%04x", (unsigned char)c);
+                    output += buf;
+                } else {
+                    output += c;
+                }
+                break;
+        }
+    }
+
+    return output;
+}
+
 static thread_local std::string g_lastError;
 static thread_local std::string g_lastInfo;
 
@@ -456,7 +486,7 @@ std::string Native::getVectorInfo(
                 // Geometry type from layer definition
                 OGRwkbGeometryType geomType = poLayer->GetGeomType();
                 geometryType = OGRGeometryTypeToName(geomType);
-                json += "\"geometryType\":\"" + geometryType + "\",";
+                json += "\"geometryType\":\"" + escapeJsonString(geometryType) + "\",";
 
                 // CRS/SRS - use user-provided sourceCrs if available, otherwise detect
                 OGRSpatialReference* srs = poLayer->GetSpatialRef();
@@ -535,8 +565,8 @@ std::string Native::getVectorInfo(
                         }
                     }
                 }
-                json += "\"crs\":\"" + crs + "\",";
-                json += "\"debugCrs\":\"" + debugInfo + "\",";
+                json += "\"crs\":\"" + escapeJsonString(crs) + "\",";
+                json += "\"debugCrs\":\"" + escapeJsonString(debugInfo) + "\",";
 
                 // Bounding box (extent)
                 OGREnvelope extent;
@@ -575,7 +605,7 @@ std::string Native::getVectorInfo(
                         json += "\"bboxReprojected\":false,";
                     }
 
-                    json += "\"debugTransform\":\"" + transformDebug + "\",";
+                    json += "\"debugTransform\":\"" + escapeJsonString(transformDebug) + "\",";
 
                     json += "\"bbox\":[";
                     json += std::to_string(bboxMinX) + ",";
