@@ -15,6 +15,7 @@
     "@cpp.js/plugin-vite": "^1.0.2",
     "jszip": "^3.10.1",
     "maplibre-gl": "^5.9.0",
+    "proj4": "^2.19.10",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "react-map-gl": "^8.1.0"

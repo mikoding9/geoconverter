@@ -15,6 +15,7 @@ import {
 import { motion } from 'motion/react'
 import clsx from 'clsx'
 import JSZip from 'jszip'
+import proj4 from 'proj4'
 import { initCppJs, Native, VectorUint8 } from '@/native/native.h'
 import { Text } from '@/components/text'
 import { SupportedFormats, SUPPORTED_FORMATS } from '@/components/SupportedFormats'
@@ -354,6 +355,77 @@ function App() {
     }
   }
 
+  /**
+   * Transform a bounding box to WGS84 using proj4.js as fallback
+   * when native PROJ transformation fails
+   */
+  const transformBboxWithProj4 = async (bbox, sourceCrs) => {
+    if (!bbox || bbox.length !== 4) {
+      throw new Error('Invalid bbox format')
+    }
+
+    // Parse CRS - extract EPSG code or use as PROJ string
+    let proj4Def = null
+    const epsgMatch = sourceCrs.match(/EPSG:(\d+)/i)
+
+    if (epsgMatch) {
+      const epsgCode = epsgMatch[1]
+      // Try to get PROJ4 definition from epsg.io
+      try {
+        const response = await fetch(`https://epsg.io/${epsgCode}.proj4`, { mode: 'cors' })
+        if (response.ok) {
+          proj4Def = await response.text()
+          console.log(`Fetched PROJ4 definition for EPSG:${epsgCode}:`, proj4Def)
+        }
+      } catch (error) {
+        console.warn(`Failed to fetch PROJ4 definition for EPSG:${epsgCode}`, error)
+      }
+
+      // Fallback: use EPSG code directly (proj4 has some built-in definitions)
+      if (!proj4Def) {
+        proj4Def = `EPSG:${epsgCode}`
+      }
+    } else {
+      // Assume sourceCrs is already a PROJ string
+      proj4Def = sourceCrs
+    }
+
+    // Define WGS84
+    const wgs84 = 'EPSG:4326'
+
+    // Sample 8 points along each edge (same as native code)
+    const [minX, minY, maxX, maxY] = bbox
+    const points = []
+    const steps = 8
+
+    // Helper to add edge points
+    const addEdge = (x0, y0, x1, y1) => {
+      for (let i = 0; i <= steps; i++) {
+        const t = i / steps
+        points.push([x0 + (x1 - x0) * t, y0 + (y1 - y0) * t])
+      }
+    }
+
+    // Sample edges (bottom, right, top, left)
+    addEdge(minX, minY, maxX, minY)
+    addEdge(maxX, minY, maxX, maxY)
+    addEdge(maxX, maxY, minX, maxY)
+    addEdge(minX, maxY, minX, minY)
+
+    // Transform all points
+    const transformer = proj4(proj4Def, wgs84)
+    const transformedPoints = points.map(([x, y]) => {
+      const result = transformer.forward([x, y])
+      return result
+    })
+
+    // Find min/max of transformed points
+    const xs = transformedPoints.map(p => p[0])
+    const ys = transformedPoints.map(p => p[1])
+
+    return [Math.min(...xs), Math.min(...ys), Math.max(...xs), Math.max(...ys)]
+  }
+
   const extractPreviewData = async (fileToPreview = null) => {
     if (!selectedFiles || selectedFiles.length === 0 || isInitializing) return
 
@@ -395,6 +467,43 @@ function App() {
       if (metadata.error) {
         throw new Error(metadata.error)
       }
+
+      // Log debug information to console for troubleshooting
+      console.log('=== Preview Data Debug Info ===')
+      console.log('CRS:', metadata.crs)
+      console.log('Debug CRS:', metadata.debugCrs)
+      console.log('Debug Transform:', metadata.debugTransform)
+      console.log('Bbox Reprojected:', metadata.bboxReprojected)
+      console.log('Bbox Original:', metadata.bboxOriginal)
+      console.log('Bbox (display):', metadata.bbox)
+
+      // If native reprojection failed and we have original bbox, try proj4 fallback
+      if (
+        metadata.bboxReprojected === false &&
+        metadata.bboxOriginal &&
+        metadata.bboxOriginal.length === 4 &&
+        metadata.crs &&
+        metadata.crs !== 'Unknown'
+      ) {
+        try {
+          console.log('Attempting proj4 fallback transformation...')
+          const transformedBbox = await transformBboxWithProj4(
+            metadata.bboxOriginal,
+            metadata.crs
+          )
+          if (transformedBbox) {
+            metadata.bbox = transformedBbox
+            metadata.bboxReprojected = true
+            metadata.debugTransform += ' [Fallback: proj4.js transformation successful]'
+            console.log('✓ proj4 transformation successful:', transformedBbox)
+          }
+        } catch (projError) {
+          console.warn('proj4 fallback failed:', projError.message)
+          metadata.debugTransform += ` [Fallback: proj4.js failed - ${projError.message}]`
+        }
+      }
+
+      console.log('===============================')
 
       setPreviewData(metadata)
       setShowPreview(true)
