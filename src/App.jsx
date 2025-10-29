@@ -709,6 +709,64 @@ function App() {
         }
       }
 
+      // Helper function to make error messages more user-friendly
+      const friendlyErrorMessage = (errorMsg) => {
+        const lowerMsg = errorMsg.toLowerCase()
+        const prefix = errorMsg.split(':')[0] || ''
+
+        // Skip failures suggestion
+        if (lowerMsg.includes('skipfailures') || lowerMsg.includes('skip failures') || lowerMsg.includes('terminating translation prematurely')) {
+          return `${prefix}: Some features could not be converted. Try enabling "Skip Failures" in Advanced Options to skip problematic features and convert the rest.`
+        }
+
+        // File format not recognized
+        if (lowerMsg.includes('not recognized as') || lowerMsg.includes('unable to open') || lowerMsg.includes('failed to identify')) {
+          return `${prefix}: File format not recognized. Try selecting a different input format manually, or check if the file is corrupted.`
+        }
+
+        // CRS/Projection errors
+        if (lowerMsg.includes('failed to reproject') || lowerMsg.includes('transformation failed') || lowerMsg.includes('unable to compute transformation')) {
+          return `${prefix}: Coordinate transformation failed. Try specifying a custom Source CRS in Advanced Options if the file's projection isn't auto-detected correctly.`
+        }
+
+        // Geometry validation errors
+        if (lowerMsg.includes('invalid geometry') || lowerMsg.includes('self-intersection') || lowerMsg.includes('topology error')) {
+          return `${prefix}: Invalid geometry detected. Try enabling "Make Valid" in Advanced Options to automatically fix geometry errors.`
+        }
+
+        // SQL/WHERE clause errors
+        if (lowerMsg.includes('sql') && (lowerMsg.includes('parse') || lowerMsg.includes('syntax'))) {
+          return `${prefix}: Invalid WHERE clause syntax. Check your Attribute Filter in Advanced Options and use proper SQL syntax (e.g., field > 100 or field = 'value').`
+        }
+
+        // Field/attribute errors
+        if (lowerMsg.includes('field') && (lowerMsg.includes('not found') || lowerMsg.includes('does not exist'))) {
+          return `${prefix}: Field not found. Check your "Select Fields" or "Attribute Filter" in Advanced Options to ensure field names are correct.`
+        }
+
+        // Layer errors
+        if (lowerMsg.includes('layer') && (lowerMsg.includes('not found') || lowerMsg.includes('does not exist'))) {
+          return `${prefix}: Layer not found. Try removing the custom Layer Name in Advanced Options to use the default layer, or check the spelling.`
+        }
+
+        // Empty dataset
+        if (lowerMsg.includes('no features') || lowerMsg.includes('empty') && lowerMsg.includes('layer')) {
+          return `${prefix}: No features found. The file may be empty, or your filters (Geometry Type Filter, Attribute Filter) may be excluding all features.`
+        }
+
+        // Mixed geometry types (especially for Shapefiles)
+        if (lowerMsg.includes('mixed geometry') || lowerMsg.includes('geometry type')) {
+          return `${prefix}: Mixed geometry types detected. The conversion should handle this automatically, but you can also try filtering by specific geometry type in Advanced Options.`
+        }
+
+        // Z dimension issues
+        if (lowerMsg.includes('z dimension') || lowerMsg.includes('3d') || lowerMsg.includes('elevation')) {
+          return `${prefix}: Issue with 3D coordinates. Try toggling "Keep Z Dimension" in Advanced Options.`
+        }
+
+        return errorMsg
+      }
+
       // Show summary toast
       if (successCount > 0 && failCount === 0) {
         setToast({
@@ -724,9 +782,10 @@ function App() {
         })
         console.error('Failed conversions:', errors)
       } else {
+        const firstError = errors[0] || 'Unknown error'
         setToast({
           isOpen: true,
-          message: `All conversions failed. ${errors[0] || 'Unknown error'}`,
+          message: friendlyErrorMessage(firstError),
           type: 'error'
         })
       }
@@ -776,7 +835,7 @@ function App() {
               className="order-first lg:order-none lg:col-span-6"
             >
               {/* Conversion Form */}
-              <div className="bg-zinc-900/90 backdrop-blur-md border border-zinc-700/50 rounded-2xl p-8 space-y-8 shadow-2xl">
+              <div className="bg-zinc-900/90 backdrop-blur-md border border-zinc-700/50 rounded-2xl p-6 space-y-8 shadow-2xl">
                 {/* File Selection */}
                 <div className="space-y-3">
                   <div className="flex items-center justify-between">
@@ -871,8 +930,8 @@ function App() {
                             {isDragging
                               ? 'Drop files or folders here'
                               : selectedFiles.length > 0
-                              ? `${selectedFiles.length} file${selectedFiles.length > 1 ? 's' : ''} selected`
-                              : 'Drop files here or click to browse'}
+                                ? `${selectedFiles.length} file${selectedFiles.length > 1 ? 's' : ''} selected`
+                                : 'Drop files here or click to browse'}
                           </p>
                           <p className="text-sm text-zinc-500 mt-1">
                             {selectedFiles.length > 0
@@ -1077,69 +1136,69 @@ function App() {
                         <div className="space-y-4">
                           {/* Toggle Options */}
                           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                            <Field className="flex items-center justify-between">
-                              <div>
+                            <Field>
+                              <div className='flex justify-between items-center'>
                                 <Label>Skip Failures</Label>
-                                <Text className="text-xs text-zinc-500 mt-1">
-                                  Skip invalid features instead of failing entire conversion
-                                </Text>
+                                <Switch
+                                  checked={skipFailures}
+                                  onChange={setSkipFailures}
+                                />
                               </div>
-                              <Switch
-                                checked={skipFailures}
-                                onChange={setSkipFailures}
-                              />
+                              <Text className="text-xs text-zinc-500 mt-1">
+                                Skip invalid features instead of failing entire conversion
+                              </Text>
                             </Field>
 
-                            <Field className="flex items-center justify-between">
-                              <div>
+                            <Field >
+                              <div className="flex items-center justify-between">
                                 <Label>Make Valid</Label>
-                                <Text className="text-xs text-zinc-500 mt-1">
-                                  Auto-fix self-intersecting polygons and topology errors
-                                </Text>
+                                <Switch
+                                  checked={makeValid}
+                                  onChange={setMakeValid}
+                                />
                               </div>
-                              <Switch
-                                checked={makeValid}
-                                onChange={setMakeValid}
-                              />
+                              <Text className="text-xs text-zinc-500 mt-1">
+                                Auto-fix self-intersecting polygons and topology errors
+                              </Text>
                             </Field>
 
-                            <Field className="flex items-center justify-between">
-                              <div>
+                            <Field >
+                              <div className="flex items-center justify-between">
                                 <Label>Keep Z Dimension</Label>
-                                <Text className="text-xs text-zinc-500 mt-1">
-                                  Preserve 3D coordinates (default: 2D)
-                                </Text>
+                                <Switch
+                                  checked={keepZ}
+                                  onChange={setKeepZ}
+                                />
                               </div>
-                              <Switch
-                                checked={keepZ}
-                                onChange={setKeepZ}
-                              />
+                              <Text className="text-xs text-zinc-500 mt-1">
+                                Preserve 3D coordinates (default: 2D)
+                              </Text>
                             </Field>
 
-                            <Field className="flex items-center justify-between">
-                              <div>
+                            <Field >
+                              <div className="flex items-center justify-between">
                                 <Label>Explode Collections</Label>
-                                <Text className="text-xs text-zinc-500 mt-1">
-                                  Split GeometryCollections into simple features
-                                </Text>
+                                <Switch
+                                  checked={explodeCollections}
+                                  onChange={setExplodeCollections}
+                                />
                               </div>
-                              <Switch
-                                checked={explodeCollections}
-                                onChange={setExplodeCollections}
-                              />
+                              <Text className="text-xs text-zinc-500 mt-1">
+                                Split GeometryCollections into simple features
+                              </Text>
                             </Field>
 
-                            <Field className="flex items-center justify-between">
-                              <div>
+                            <Field >
+                              <div className="flex items-center justify-between">
                                 <Label>Preserve FID</Label>
-                                <Text className="text-xs text-zinc-500 mt-1">
-                                  Keep original feature IDs (for stable references)
-                                </Text>
+                                <Switch
+                                  checked={preserveFid}
+                                  onChange={setPreserveFid}
+                                />
                               </div>
-                              <Switch
-                                checked={preserveFid}
-                                onChange={setPreserveFid}
-                              />
+                              <Text className="text-xs text-zinc-500 mt-1">
+                                Keep original feature IDs (for stable references)
+                              </Text>
                             </Field>
                           </div>
 
