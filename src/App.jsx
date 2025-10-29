@@ -140,36 +140,7 @@ function App() {
   // Drag and drop state
   const [isDragging, setIsDragging] = useState(false)
 
-  const debugTransformMessage = previewData?.debugTransform || ''
-
-  // Check if the CRS is already WGS84 (EPSG:4326)
-  const crs = previewData?.crs || ''
-  const isAlreadyWgs84 =
-    crs === 'EPSG:4326' ||
-    crs === 'WGS84' ||
-    crs === 'WGS 84' ||
-    crs.includes('WGS84') ||
-    debugTransformMessage.includes('Already WGS84')
-
-  // Only show reprojection failure message if:
-  // 1. Reprojection was actually attempted (bboxReprojected === false)
-  // 2. There's a bboxOriginal (meaning coordinates exist)
-  // 3. There's a debug message explaining the failure
-  // 4. The failure wasn't due to:
-  //    - Already being in WGS84 (no transform needed)
-  //    - Missing source CRS info (can't determine what to transform from)
-  //    - No CRS provided by user (auto-detect scenario with no embedded CRS)
-  const isNoTransformNeeded =
-    isAlreadyWgs84 ||
-    debugTransformMessage.includes('Source CRS is empty') ||
-    debugTransformMessage.includes('No reprojection needed') ||
-    (debugTransformMessage.includes('No sourceCrs provided') && crs === 'Unknown')
-
-  const showBboxReprojectionFailure =
-    previewData?.bboxReprojected === false &&
-    Boolean(previewData?.bboxOriginal) &&
-    debugTransformMessage &&
-    !isNoTransformNeeded
+  // No need for complex control flow - we'll always try to reproject bbox if possible
 
   useEffect(() => {
     initCppJs().then(() => {
@@ -458,52 +429,86 @@ function App() {
       const fileFormat = detectFormatFromFile(selectedFile.name) || inputFormat
 
       // Call native GDAL method to extract metadata with user-selected CRS
-      const jsonString = Native.getVectorInfo(inputVector, fileFormat, finalSourceCrs)
+      let jsonString = Native.getVectorInfo(inputVector, fileFormat, finalSourceCrs)
       inputVector.delete()
 
-      // Parse the JSON response
-      const metadata = JSON.parse(jsonString)
+      // Parse JSON with fallback sanitization for control characters
+      let metadata
+      try {
+        // First attempt: try parsing as-is
+        metadata = JSON.parse(jsonString)
+      } catch (parseError) {
+        // If parsing fails, try to sanitize the JSON string
+        console.warn('Initial JSON parse failed, attempting to sanitize:', parseError.message)
+
+        // Sanitize by removing or escaping control characters in string values
+        // This regex finds string values and replaces control characters within them
+        jsonString = jsonString.replace(
+          /"([^"\\]*(\\.[^"\\]*)*)"/g,
+          (match) => {
+            // For each string, replace control characters
+            return match.replace(/[\x00-\x1F\x7F]/g, (char) => {
+              // Keep allowed control chars that are already escaped
+              const code = char.charCodeAt(0)
+              switch (code) {
+                case 0x08: return '\\b'
+                case 0x09: return '\\t'
+                case 0x0A: return '\\n'
+                case 0x0C: return '\\f'
+                case 0x0D: return '\\r'
+                default: return '' // Remove other control characters
+              }
+            })
+          }
+        )
+
+        // Try parsing again after sanitization
+        metadata = JSON.parse(jsonString)
+      }
 
       if (metadata.error) {
         throw new Error(metadata.error)
       }
 
-      // Log debug information to console for troubleshooting
-      console.log('=== Preview Data Debug Info ===')
-      console.log('CRS:', metadata.crs)
-      console.log('Debug CRS:', metadata.debugCrs)
-      console.log('Debug Transform:', metadata.debugTransform)
-      console.log('Bbox Reprojected:', metadata.bboxReprojected)
-      console.log('Bbox Original:', metadata.bboxOriginal)
-      console.log('Bbox (display):', metadata.bbox)
+      // Use user-specified source CRS if provided, otherwise use auto-detected CRS
+      const crsForReprojection = finalSourceCrs || metadata.crs
 
-      // If native reprojection failed and we have original bbox, try proj4 fallback
+      // Check if CRS is already in geographic coordinates (lat/lon)
+      const isAlreadyGeographic =
+        !crsForReprojection ||
+        crsForReprojection === 'Unknown' ||
+        crsForReprojection === 'EPSG:4326' ||
+        crsForReprojection.includes('+proj=longlat') ||
+        crsForReprojection.includes('+proj=latlong')
+
+      // Always try to reproject bbox to WGS84 for map display using proj4
+      // Only skip if already in geographic coordinates or missing data
       if (
-        metadata.bboxReprojected === false &&
-        metadata.bboxOriginal &&
-        metadata.bboxOriginal.length === 4 &&
-        metadata.crs &&
-        metadata.crs !== 'Unknown'
+        metadata.bbox &&
+        metadata.bbox.length === 4 &&
+        !isAlreadyGeographic
       ) {
         try {
-          console.log('Attempting proj4 fallback transformation...')
-          const transformedBbox = await transformBboxWithProj4(
-            metadata.bboxOriginal,
-            metadata.crs
-          )
-          if (transformedBbox) {
-            metadata.bbox = transformedBbox
-            metadata.bboxReprojected = true
-            metadata.debugTransform += ' [Fallback: proj4.js transformation successful]'
-            console.log('✓ proj4 transformation successful:', transformedBbox)
-          }
+          // Store original bbox before transformation
+          metadata.bboxOriginal = [...metadata.bbox]
+          const transformedBbox = await transformBboxWithProj4(metadata.bbox, crsForReprojection)
+          metadata.bbox = transformedBbox
+          metadata.bboxReprojected = true
+          metadata.crsUsedForReprojection = crsForReprojection
+          console.log(`✓ Bbox reprojected to WGS84 using ${finalSourceCrs ? 'user-specified' : 'auto-detected'} CRS:`, crsForReprojection)
         } catch (projError) {
-          console.warn('proj4 fallback failed:', projError.message)
-          metadata.debugTransform += ` [Fallback: proj4.js failed - ${projError.message}]`
+          console.warn('Bbox reprojection failed, using original coordinates:', projError.message)
+          // Keep original bbox as fallback
+          metadata.bboxReprojected = false
         }
       }
 
-      console.log('===============================')
+      // Log debug info
+      console.log('=== Preview Data ===')
+      console.log('CRS:', metadata.crs)
+      console.log('Bbox:', metadata.bbox)
+      console.log('Feature Count:', metadata.featureCount)
+      console.log('Layers:', metadata.layers)
 
       setPreviewData(metadata)
       setShowPreview(true)
@@ -1430,7 +1435,6 @@ function App() {
         selectedFile={selectedFiles.length > 0 ? selectedFiles[0] : null}
         previewData={previewData}
         inputFormat={inputFormat}
-        showBboxReprojectionFailure={showBboxReprojectionFailure}
       />
 
       <Toast

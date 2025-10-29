@@ -7,8 +7,7 @@ export function PreviewModal({
   onClose,
   selectedFile,
   previewData,
-  inputFormat,
-  showBboxReprojectionFailure
+  inputFormat
 }) {
   if (!isOpen || !selectedFile) return null
 
@@ -102,19 +101,13 @@ export function PreviewModal({
               </div>
               <div className="space-y-1">
                 <p className="text-xs text-zinc-500">
-                  Bounding box: <span className="text-zinc-400 font-mono">
+                  Bounding box{previewData.bboxReprojected ? ' (WGS84)' : ''}: <span className="text-zinc-400 font-mono">
                     {previewData.bbox.map((value) => value.toFixed(6)).join(', ')}
                   </span>
-                  {previewData.bboxReprojected === true && (
-                    <span className="ml-2 text-emerald-400">(reprojected to WGS84 for display)</span>
-                  )}
-                  {showBboxReprojectionFailure && (
-                    <span className="ml-2 text-red-400">(reprojection failed - showing original)</span>
-                  )}
                 </p>
-                {previewData.bboxOriginal && (
+                {previewData.bboxOriginal && previewData.bboxReprojected && (
                   <p className="text-xs text-zinc-600">
-                    Original bbox: <span className="font-mono">
+                    Original ({previewData.crsUsedForReprojection || previewData.crs}): <span className="font-mono">
                       {previewData.bboxOriginal.map((value) => value.toFixed(2)).join(', ')}
                     </span>
                   </p>
