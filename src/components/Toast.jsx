@@ -17,11 +17,11 @@ export function Toast({ message, type = 'success', isOpen, onClose, duration = 5
     <AnimatePresence>
       {isOpen && (
         <motion.div
-          initial={{ opacity: 0, y: -20, scale: 0.95 }}
+          initial={{ opacity: 0, y: 20, scale: 0.95 }}
           animate={{ opacity: 1, y: 0, scale: 1 }}
-          exit={{ opacity: 0, y: -20, scale: 0.95 }}
+          exit={{ opacity: 0, y: 20, scale: 0.95 }}
           transition={{ duration: 0.2 }}
-          className="fixed top-4 right-4 z-50 max-w-md"
+          className="fixed bottom-4 right-4 z-50 max-w-md"
         >
           <div
             className={clsx(
