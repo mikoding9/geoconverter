@@ -1307,15 +1307,21 @@ function App() {
                                     setCustomSourceCrs(e.target.value)
                                   }
                                   onBlur={handleSourceCustomBlur}
-                                  placeholder="e.g., epsg:4326 or +proj=longlat +datum=WGS84 +no_defs"
+                                  placeholder="EPSG:4326 (auto-converts) or +proj=longlat +datum=WGS84..."
                                   className="mt-2"
                                   disabled={resolvingSourceCrs}
                                 />
                               )}
                               <Text className="text-xs text-zinc-500 mt-2">
-                                {resolvingSourceCrs
-                                  ? "Resolving EPSG code..."
-                                  : "Source projection (PROJ string; leave empty to auto-detect)"}
+                                {resolvingSourceCrs ? (
+                                  <span className="text-emerald-400">
+                                    ⏳ Resolving EPSG code to PROJ string...
+                                  </span>
+                                ) : (
+                                  <>
+                                    💡 Enter <span className="font-mono text-emerald-400">EPSG:####</span> (e.g., EPSG:4326) to auto-translate, or paste a full PROJ string. Leave empty to auto-detect from file.
+                                  </>
+                                )}
                               </Text>
                             </Field>
 
@@ -1340,15 +1346,21 @@ function App() {
                                     setCustomTargetCrs(e.target.value)
                                   }
                                   onBlur={handleTargetCustomBlur}
-                                  placeholder="e.g., epsg:3857 or +proj=merc +lon_0=0 +k=1 +datum=WGS84"
+                                  placeholder="EPSG:3857 (auto-converts) or +proj=merc +lon_0=0..."
                                   className="mt-2"
                                   disabled={resolvingTargetCrs}
                                 />
                               )}
                               <Text className="text-xs text-zinc-500 mt-2">
-                                {resolvingTargetCrs
-                                  ? "Resolving EPSG code..."
-                                  : "Transform to this projection (PROJ string; optional)"}
+                                {resolvingTargetCrs ? (
+                                  <span className="text-emerald-400">
+                                    ⏳ Resolving EPSG code to PROJ string...
+                                  </span>
+                                ) : (
+                                  <>
+                                    💡 Enter <span className="font-mono text-emerald-400">EPSG:####</span> (e.g., EPSG:3857) to auto-translate, or paste a full PROJ string. Leave empty for no transformation.
+                                  </>
+                                )}
                               </Text>
                             </Field>
                           </div>
