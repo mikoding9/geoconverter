@@ -1,6 +1,21 @@
 @import "tailwindcss";
 
 @theme {
-  --font-sans: Inter, sans-serif;
-  --font-sans--font-feature-settings: 'cv11';
+    --font-sans: Inter, sans-serif;
+    --font-sans--font-feature-settings: "cv11";
+}
+
+/* Configure dark mode to use class-based selector only, not media query */
+@variant dark (.dark &);
+
+/* Force dark mode regardless of OS appearance settings */
+@media (prefers-color-scheme: light) {
+    html {
+        color-scheme: dark;
+    }
+
+    /* Override any light mode styles that might leak through */
+    * {
+        color-scheme: dark;
+    }
 }
