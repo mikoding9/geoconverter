@@ -100,6 +100,7 @@ static std::string getDriverNameFromFormat(const std::string& format) {
     if (f == "geojson")     return "GeoJSON";
     if (f == "topojson")    return "TopoJSON";
     if (f == "shapefile")   return "ESRI Shapefile";
+    if (f == "esrijson")    return "ESRIJSON";
     if (f == "geopackage")  return "GPKG";
     if (f == "kml")         return "KML";
     if (f == "gpx")         return "GPX";
@@ -128,6 +129,19 @@ static std::string getDriverNameFromFormat(const std::string& format) {
     if (f == "wasp")        return "WAsP";
     if (f == "xlsx")        return "XLSX";
     if (f == "pgdump")      return "PGDump";
+    // Read-only formats
+    if (f == "avcbin")      return "AVCBIN";
+    if (f == "avce00")      return "AVCE00";
+    if (f == "cad")         return "CAD";
+    if (f == "edigeo")      return "EDIGEO";
+    if (f == "gtfs")        return "GTFS";
+    if (f == "idrisi")      return "Idrisi";
+    if (f == "lvbag")       return "LVBAG";
+    if (f == "ogr_pds")     return "PDS";
+    if (f == "ogr_vrt")     return "VRT";
+    if (f == "osm")         return "OSM";
+    if (f == "sxf")         return "SXF";
+    if (f == "vfk")         return "VFK";
     return "GeoJSON";
 }
 

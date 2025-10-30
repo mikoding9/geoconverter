@@ -9,6 +9,7 @@ const CAPABILITIES = Object.freeze({
 })
 
 const SUPPORTED_FORMATS = [
+  // ===== Input/Output Formats =====
   {
     value: 'geojson',
     label: 'GeoJSON',
@@ -17,15 +18,6 @@ const SUPPORTED_FORMATS = [
     capabilities: CAPABILITIES.inputOutput,
     description: 'Open standard format for representing geographic features using JSON. Web-friendly and human-readable.',
     useCase: 'Web mapping, APIs, JavaScript applications'
-  },
-  {
-    value: 'topojson',
-    label: 'TopoJSON',
-    downloadExt: '.topojson',
-    extensions: ['topojson'],
-    capabilities: CAPABILITIES.inputOnly,
-    description: 'Topology-preserving extension of GeoJSON that shares borders between features to reduce file size.',
-    useCase: 'Web visualizations, D3.js, compact boundary datasets'
   },
   {
     value: 'shapefile',
@@ -279,6 +271,134 @@ const SUPPORTED_FORMATS = [
     description: 'Microsoft Excel workbook with OGR support for vector data in worksheets.',
     useCase: 'Business reporting, lightweight data exchange'
   },
+  // ===== Input-Only (Read-Only) Formats =====
+  {
+    value: 'topojson',
+    label: 'TopoJSON',
+    downloadExt: '.topojson',
+    extensions: ['topojson'],
+    capabilities: CAPABILITIES.inputOnly,
+    description: 'Topology-preserving extension of GeoJSON that shares borders between features to reduce file size.',
+    useCase: 'Web visualizations, D3.js, compact boundary datasets'
+  },
+  {
+    value: 'esrijson',
+    label: 'ESRI JSON',
+    downloadExt: '.json',
+    extensions: ['json'],
+    capabilities: CAPABILITIES.inputOnly,
+    description: 'JSON format used by ArcGIS REST services to represent features. Similar to GeoJSON but with Esri-specific structure.',
+    useCase: 'ArcGIS REST APIs, ArcGIS Online, ArcGIS Server'
+  },
+  {
+    value: 'avcbin',
+    label: 'AVCBin',
+    downloadExt: '.avc',
+    extensions: ['avc'],
+    capabilities: CAPABILITIES.inputOnly,
+    description: 'Arc/Info Binary Coverage format for legacy Esri vector data storage.',
+    useCase: 'Legacy Arc/Info workflows, historical GIS datasets'
+  },
+  {
+    value: 'avce00',
+    label: 'AVCE00',
+    downloadExt: '.e00',
+    extensions: ['e00'],
+    capabilities: CAPABILITIES.inputOnly,
+    description: 'Arc/Info E00 (ASCII) Coverage format for data exchange and archival.',
+    useCase: 'Legacy Arc/Info data exchange, historical datasets'
+  },
+  {
+    value: 'cad',
+    label: 'CAD (DWG)',
+    downloadExt: '.dwg',
+    extensions: ['dwg'],
+    capabilities: CAPABILITIES.inputOnly,
+    description: 'AutoCAD DWG native format for reading CAD drawings as GIS features.',
+    useCase: 'CAD data import, engineering drawings, building footprints'
+  },
+  {
+    value: 'edigeo',
+    label: 'EDIGEO',
+    downloadExt: '.thf',
+    extensions: ['thf', 'edigeo'],
+    capabilities: CAPABILITIES.inputOnly,
+    description: 'French EDIGEO exchange format used for cadastral and topographic data.',
+    useCase: 'French cadastral data, land registry, topographic surveys'
+  },
+  {
+    value: 'gtfs',
+    label: 'GTFS',
+    downloadExt: '.zip',
+    extensions: ['gtfs'],
+    capabilities: CAPABILITIES.inputOnly,
+    description: 'General Transit Feed Specification for public transportation schedules and geographic data.',
+    useCase: 'Transit data analysis, route planning, mobility apps'
+  },
+  {
+    value: 'idrisi',
+    label: 'Idrisi Vector',
+    downloadExt: '.vct',
+    extensions: ['vct'],
+    capabilities: CAPABILITIES.inputOnly,
+    description: 'Idrisi Vector (.VCT) format from the TerrSet/Idrisi GIS software.',
+    useCase: 'Legacy Idrisi/TerrSet data, historical remote sensing projects'
+  },
+  {
+    value: 'lvbag',
+    label: 'LVBAG',
+    downloadExt: '.xml',
+    extensions: ['xml'],
+    capabilities: CAPABILITIES.inputOnly,
+    description: 'Dutch Kadaster LV BAG 2.0 Extract format for building and address data.',
+    useCase: 'Dutch building registry, address datasets, urban planning'
+  },
+  {
+    value: 'ogr_pds',
+    label: 'PDS',
+    downloadExt: '.tab',
+    extensions: ['tab'],
+    capabilities: CAPABILITIES.inputOnly,
+    description: 'Planetary Data Systems TABLE format for NASA planetary mission data.',
+    useCase: 'Planetary science, Mars/Moon datasets, NASA missions'
+  },
+  {
+    value: 'ogr_vrt',
+    label: 'OGR VRT',
+    downloadExt: '.vrt',
+    extensions: ['vrt'],
+    capabilities: CAPABILITIES.inputOnly,
+    description: 'OGR Virtual Format for defining virtual datasets and custom data transformations.',
+    useCase: 'Virtual datasets, on-the-fly transformations, data federation'
+  },
+  {
+    value: 'osm',
+    label: 'OpenStreetMap',
+    downloadExt: '.osm',
+    extensions: ['osm', 'pbf'],
+    capabilities: CAPABILITIES.inputOnly,
+    description: 'OpenStreetMap XML and PBF formats for collaborative mapping data.',
+    useCase: 'OpenStreetMap data, crowd-sourced maps, urban analysis'
+  },
+  {
+    value: 'sxf',
+    label: 'SXF',
+    downloadExt: '.sxf',
+    extensions: ['sxf'],
+    capabilities: CAPABILITIES.inputOnly,
+    description: 'Storage and eXchange Format used in Russian GIS and mapping systems.',
+    useCase: 'Russian topographic data, military mapping, legacy Soviet datasets'
+  },
+  {
+    value: 'vfk',
+    label: 'VFK',
+    downloadExt: '.vfk',
+    extensions: ['vfk'],
+    capabilities: CAPABILITIES.inputOnly,
+    description: 'Czech Cadastral Exchange Data Format for land registry and property data.',
+    useCase: 'Czech land registry, property boundaries, cadastral records'
+  },
+  // ===== Output-Only Formats =====
   {
     value: 'pgdump',
     label: 'PGDump',
