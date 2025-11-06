@@ -22,7 +22,7 @@ import { motion } from "motion/react";
 import clsx from "clsx";
 import JSZip from "jszip";
 import proj4 from "proj4";
-import { initCppJs, Native, VectorUint8 } from "@/native/native.h";
+import { initCppJs, Native } from "@/native/native.h";
 import { Text } from "@/components/text";
 import {
   SupportedFormats,
@@ -168,6 +168,7 @@ function App() {
   // Preview state
   const [showPreview, setShowPreview] = useState(false);
   const [previewData, setPreviewData] = useState(null);
+  const [isLoadingPreview, setIsLoadingPreview] = useState(false);
 
   // Help dialog state
   const [showHelp, setShowHelp] = useState(false);
@@ -175,13 +176,29 @@ function App() {
   // Drag and drop state
   const [isDragging, setIsDragging] = useState(false);
 
+  // Initialize Web Worker for off-thread processing
+  const converterWorkerRef = useRef(null);
+
   // No need for complex control flow - we'll always try to reproject bbox if possible
 
   useEffect(() => {
+    // Initialize WASM module for main thread (for getGdalInfo)
     initCppJs().then(() => {
       setGdalVersion(Native.getGdalInfo());
       setIsInitializing(false);
     });
+
+    // Initialize Web Worker
+    converterWorkerRef.current = new Worker(
+      new URL('./workers/converter.worker.js', import.meta.url)
+    );
+
+    // Cleanup worker on unmount
+    return () => {
+      if (converterWorkerRef.current) {
+        converterWorkerRef.current.terminate();
+      }
+    };
   }, []);
 
   const detectFormatFromFile = (filename) => {
@@ -458,27 +475,12 @@ function App() {
   const extractPreviewData = async (fileToPreview = null) => {
     if (!selectedFiles || selectedFiles.length === 0 || isInitializing) return;
 
-    // Check if the module is initialized
-    if (!Native || !VectorUint8) {
-      setToast({
-        isOpen: true,
-        message: "Please wait for the module to initialize.",
-        type: "error",
-      });
-      return;
-    }
-
     try {
+      setIsLoadingPreview(true);
+
       // Use specified file or default to first file
       const selectedFile = fileToPreview || selectedFiles[0];
       const arrayBuffer = await selectedFile.arrayBuffer();
-      const inputArray = new Uint8Array(arrayBuffer);
-
-      // Create a C++ vector from the Uint8Array
-      const inputVector = new VectorUint8();
-      for (let i = 0; i < inputArray.length; i++) {
-        inputVector.push_back(inputArray[i]);
-      }
 
       // Get final source CRS (use custom if 'custom' is selected)
       const finalSourceCrs =
@@ -487,13 +489,13 @@ function App() {
       // Detect format for this specific file
       const fileFormat = detectFormatFromFile(selectedFile.name) || inputFormat;
 
-      // Call native GDAL method to extract metadata with user-selected CRS
-      let jsonString = Native.getVectorInfo(
-        inputVector,
+      // Call worker to extract metadata (off main thread)
+      let jsonString = await getVectorInfoWithWorker(
+        arrayBuffer,
+        selectedFile.name,
         fileFormat,
         finalSourceCrs,
       );
-      inputVector.delete();
 
       // Parse JSON with fallback sanitization for control characters
       let metadata;
@@ -596,6 +598,8 @@ function App() {
         message: "Failed to extract preview data. " + error.message,
         type: "error",
       });
+    } finally {
+      setIsLoadingPreview(false);
     }
   };
 
@@ -684,6 +688,77 @@ function App() {
     resolveEpsgCode(customTargetCrs, "target");
   };
 
+  // Helper function to convert file using Web Worker
+  const convertFileWithWorker = (fileData, fileName, inputFormat, outputFormat, options) => {
+    return new Promise((resolve, reject) => {
+      const worker = converterWorkerRef.current;
+
+      if (!worker) {
+        reject(new Error('Worker not initialized'));
+        return;
+      }
+
+      // Set up one-time message handler for this conversion
+      const handleMessage = (e) => {
+        worker.removeEventListener('message', handleMessage);
+
+        if (e.data.success) {
+          resolve(new Uint8Array(e.data.data));
+        } else {
+          reject(new Error(e.data.error));
+        }
+      };
+
+      worker.addEventListener('message', handleMessage);
+
+      // Send conversion request to worker
+      worker.postMessage({
+        type: 'convert',
+        fileData,
+        fileName,
+        inputFormat,
+        outputFormat,
+        options
+      }, [fileData]); // Transfer ArrayBuffer ownership to worker
+    });
+  };
+
+  // Helper function to get vector info using Web Worker
+  const getVectorInfoWithWorker = (fileData, fileName, inputFormat, sourceCrs) => {
+    return new Promise((resolve, reject) => {
+      const worker = converterWorkerRef.current;
+
+      if (!worker) {
+        reject(new Error('Worker not initialized'));
+        return;
+      }
+
+      // Set up one-time message handler for this request
+      const handleMessage = (e) => {
+        worker.removeEventListener('message', handleMessage);
+
+        if (e.data.success) {
+          resolve(e.data.info);
+        } else {
+          reject(new Error(e.data.error));
+        }
+      };
+
+      worker.addEventListener('message', handleMessage);
+
+      // Send getVectorInfo request to worker
+      worker.postMessage({
+        type: 'getVectorInfo',
+        fileData,
+        fileName,
+        inputFormat,
+        options: {
+          sourceCrs
+        }
+      }, [fileData]); // Transfer ArrayBuffer ownership to worker
+    });
+  };
+
   const handleConvert = async () => {
     if (!selectedFiles || selectedFiles.length === 0) return;
 
@@ -730,59 +805,35 @@ function App() {
             inputArray = new Uint8Array(arrayBuffer);
           }
 
-          // Create a C++ vector from the Uint8Array
-          const inputVector = new VectorUint8();
-          for (let i = 0; i < inputArray.length; i++) {
-            inputVector.push_back(inputArray[i]);
-          }
-
           // Get final CRS values (use custom if 'custom' is selected)
           const finalSourceCrs =
             sourceCrs === "custom" ? customSourceCrs : sourceCrs;
           const finalTargetCrs =
             targetCrs === "custom" ? customTargetCrs : targetCrs;
 
-          // Convert using GDAL through WebAssembly
-          const outputVector = Native.convertVector(
-            inputVector,
+          // Convert using Web Worker (off main thread)
+          const outputArray = await convertFileWithWorker(
+            inputArray.buffer,
+            selectedFile.name,
             actualInputFormat,
             outputFormat,
-            finalSourceCrs,
-            finalTargetCrs,
-            layerName,
-            geometryTypeFilter,
-            skipFailures,
-            makeValid,
-            keepZ,
-            whereClause,
-            selectFields,
-            simplifyTolerance,
-            explodeCollections,
-            preserveFid,
-            geojsonPrecision,
-            csvGeometryMode,
+            {
+              sourceCrs: finalSourceCrs,
+              targetCrs: finalTargetCrs,
+              layerName,
+              geometryTypeFilter,
+              skipFailures,
+              makeValid,
+              keepZ,
+              whereClause,
+              selectFields,
+              simplifyTolerance,
+              explodeCollections,
+              preserveFid,
+              geojsonPrecision,
+              csvGeometryMode,
+            }
           );
-
-          if (!outputVector || outputVector.size() === 0) {
-            inputVector.delete();
-            if (outputVector) outputVector.delete();
-            const lastError =
-              typeof Native.getLastError === "function"
-                ? Native.getLastError()
-                : "";
-            throw new Error(lastError || "Conversion failed - output is empty");
-          }
-
-          // Convert C++ vector back to Uint8Array
-          const outputSize = outputVector.size();
-          const outputArray = new Uint8Array(outputSize);
-          for (let i = 0; i < outputSize; i++) {
-            outputArray[i] = outputVector.get(i);
-          }
-
-          // Clean up C++ objects
-          inputVector.delete();
-          outputVector.delete();
 
           // Create blob for download
           const baseName = selectedFile.name.replace(/\.[^/.]+$/, "");
@@ -806,16 +857,11 @@ function App() {
           successFiles.push(selectedFile.name);
         } catch (error) {
           failCount++;
-          const nativeError =
-            typeof Native.getLastError === "function"
-              ? Native.getLastError()
-              : "";
           console.error(
             `Conversion error for ${selectedFile.name}:`,
             error,
-            nativeError ? `Native: ${nativeError}` : "",
           );
-          errors.push(`${selectedFile.name}: ${nativeError || error.message}`);
+          errors.push(`${selectedFile.name}: ${error.message}`);
         }
       }
 
@@ -1053,13 +1099,19 @@ function App() {
                         onClick={() => extractPreviewData(selectedFiles[0])}
                         disabled={
                           isInitializing ||
+                          isLoadingPreview ||
+                          isConverting ||
                           resolvingSourceCrs ||
                           resolvingTargetCrs
                         }
                         className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-zinc-400 hover:text-emerald-400 bg-zinc-900/50 hover:bg-zinc-800/50 border border-zinc-800 hover:border-emerald-500/30 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:text-zinc-400 disabled:hover:border-zinc-800"
                       >
-                        <EyeIcon className="w-4 h-4" />
-                        <span>Preview</span>
+                        {isLoadingPreview ? (
+                          <ArrowPathIcon className="w-4 h-4 animate-spin" />
+                        ) : (
+                          <EyeIcon className="w-4 h-4" />
+                        )}
+                        <span>{isLoadingPreview ? "Loading..." : "Preview"}</span>
                       </button>
                     ) : (
                       <Dropdown>
@@ -1067,13 +1119,19 @@ function App() {
                           as="button"
                           disabled={
                             isInitializing ||
+                            isLoadingPreview ||
+                            isConverting ||
                             resolvingSourceCrs ||
                             resolvingTargetCrs
                           }
                           className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-zinc-400 hover:text-emerald-400 bg-zinc-900/50 hover:bg-zinc-800/50 border border-zinc-800 hover:border-emerald-500/30 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:text-zinc-400 disabled:hover:border-zinc-800"
                         >
-                          <EyeIcon className="w-4 h-4" />
-                          <span>Preview</span>
+                          {isLoadingPreview ? (
+                            <ArrowPathIcon className="w-4 h-4 animate-spin" />
+                          ) : (
+                            <EyeIcon className="w-4 h-4" />
+                          )}
+                          <span>{isLoadingPreview ? "Loading..." : "Preview"}</span>
                           <ChevronDownIcon className="w-3 h-3" />
                         </DropdownButton>
                         <DropdownMenu className="max-h-64 overflow-y-auto z-[9999]">
@@ -1683,7 +1741,8 @@ function App() {
                     !selectedFiles ||
                     selectedFiles.length === 0 ||
                     isInitializing ||
-                    isConverting
+                    isConverting ||
+                    isLoadingPreview
                   }
                   className="w-full"
                 >
