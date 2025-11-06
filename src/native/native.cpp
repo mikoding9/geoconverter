@@ -128,6 +128,7 @@ static std::string getDriverNameFromFormat(const std::string& format) {
     if (f == "vicar")       return "VICAR";
     if (f == "wasp")        return "WAsP";
     if (f == "xlsx")        return "XLSX";
+    if (f == "openfilegdb") return "OpenFileGDB";
     if (f == "pgdump")      return "PGDump";
     // Read-only formats
     if (f == "avcbin")      return "AVCBIN";
@@ -177,6 +178,7 @@ static std::string getExtensionFromFormat(const std::string& format) {
     if (f == "vicar")       return ".vic";
     if (f == "wasp")        return ".map";
     if (f == "xlsx")        return ".xlsx";
+    if (f == "openfilegdb") return ".gdb.zip";
     if (f == "pgdump")      return ".sql";
     return ".geojson";
 }
@@ -203,6 +205,54 @@ static std::string pickShpInsideZip(const std::string& zipVsi) {
     }
     CSLDestroy(files);
     return shpPath;
+}
+
+// find a .gdb directory inside /vsizip//vsimem/xxx.zip (first match)
+static std::string pickGdbInsideZip(const std::string& zipVsi) {
+    char** entries = VSIReadDir(zipVsi.c_str());
+    std::string gdbPath;
+    for (int i = 0; entries && entries[i]; i++) {
+        std::string entry = entries[i];
+        if (entry == "." || entry == "..") continue;
+        // Check if it's a .gdb directory
+        if (entry.size() > 4 && toLower(entry.substr(entry.size()-4)) == ".gdb") {
+            std::string candidatePath = zipVsi + "/" + entry;
+            VSIStatBufL statBuf;
+            if (VSIStatL(candidatePath.c_str(), &statBuf) == 0 && VSI_ISDIR(statBuf.st_mode)) {
+                gdbPath = candidatePath; // e.g. /vsizip//vsimem/input.zip/data.gdb
+                break;
+            }
+        }
+    }
+    CSLDestroy(entries);
+    return gdbPath;
+}
+
+// recursively copy directory contents to ZIP
+static void copyDirToZip(const std::string& srcDir, const std::string& zipPath, const std::string& zipPrefix) {
+    char** fileList = VSIReadDirRecursive(srcDir.c_str());
+    if (!fileList) return;
+
+    for (int i = 0; fileList[i] != nullptr; i++) {
+        std::string relPath = fileList[i];
+        std::string srcPath = srcDir + "/" + relPath;
+        std::string dstPath = "/vsizip/" + zipPath + "/" + zipPrefix + "/" + relPath;
+
+        // Check if it's a file (not a directory)
+        VSIStatBufL statBuf;
+        if (VSIStatL(srcPath.c_str(), &statBuf) == 0 && !VSI_ISDIR(statBuf.st_mode)) {
+            vsi_l_offset nBytes = 0;
+            GByte* fileData = VSIGetMemFileBuffer(srcPath.c_str(), &nBytes, FALSE);
+            if (fileData && nBytes > 0) {
+                VSILFILE* fpOut = VSIFOpenL(dstPath.c_str(), "wb");
+                if (fpOut) {
+                    VSIFWriteL(fileData, 1, nBytes, fpOut);
+                    VSIFCloseL(fpOut);
+                }
+            }
+        }
+    }
+    CSLDestroy(fileList);
 }
 
 // small wrapper for GDALVectorTranslate
@@ -459,6 +509,18 @@ std::string Native::getVectorInfo(
             const std::string zipVsi = "/vsizip/" + zipPath;
             inputPath = pickShpInsideZip(zipVsi);
             if (inputPath.empty()) throw std::runtime_error("No .shp found in input ZIP");
+        } else if (inFmt == "openfilegdb") {
+            const std::string zipPath = "/vsimem/preview_input.zip";
+            fpIn = VSIFileFromMemBuffer(zipPath.c_str(),
+                                        const_cast<GByte*>(inputData.data()),
+                                        static_cast<vsi_l_offset>(inputData.size()),
+                                        FALSE);
+            if (!fpIn) throw std::runtime_error("Failed to create input ZIP file");
+            VSIFCloseL(fpIn); fpIn = nullptr;
+
+            const std::string zipVsi = "/vsizip/" + zipPath;
+            inputPath = pickGdbInsideZip(zipVsi);
+            if (inputPath.empty()) throw std::runtime_error("No .gdb folder found in input ZIP");
         } else {
             std::string inputExt = getExtensionFromFormat(inFmt);
             if (inputExt == ".zip") inputExt = ".dat";
@@ -697,7 +759,7 @@ std::string Native::getVectorInfo(
 
         // Cleanup
         GDALClose(poDS);
-        if (inFmt == "shapefile") {
+        if (inFmt == "shapefile" || inFmt == "openfilegdb") {
             VSIUnlink("/vsimem/preview_input.zip");
         } else {
             VSIUnlink(inputPath.c_str());
@@ -759,6 +821,18 @@ std::vector<uint8_t> Native::convertVector(
             const std::string zipVsi = "/vsizip/" + zipPath; // note: /vsizip//vsimem/input.zip also works
             inputPath = pickShpInsideZip(zipVsi);
             if (inputPath.empty()) throw std::runtime_error("No .shp found in input ZIP");
+        } else if (inFmt == "openfilegdb") {
+            const std::string zipPath = "/vsimem/input.zip";
+            fpIn = VSIFileFromMemBuffer(zipPath.c_str(),
+                                        const_cast<GByte*>(inputData.data()),
+                                        static_cast<vsi_l_offset>(inputData.size()),
+                                        FALSE);
+            if (!fpIn) throw std::runtime_error("Failed to create input ZIP file");
+            VSIFCloseL(fpIn); fpIn = nullptr;
+
+            const std::string zipVsi = "/vsizip/" + zipPath;
+            inputPath = pickGdbInsideZip(zipVsi);
+            if (inputPath.empty()) throw std::runtime_error("No .gdb folder found in input ZIP");
         } else {
             std::string inputExt = getExtensionFromFormat(inFmt);
             if (inputExt == ".zip") inputExt = ".dat"; // non-shp should not be zip here
@@ -884,8 +958,80 @@ std::vector<uint8_t> Native::convertVector(
             }
             VSIUnlink(zipPath.c_str());
         }
+        else if (driver == "OpenFileGDB") {
+            // Special case for OpenFileGDB: write to .gdb directory, then ZIP it
+            const std::string gdbName = layerName.empty() ? "output.gdb" : layerName + ".gdb";
+            const std::string gdbDir = "/vsimem/" + gdbName;
+
+            std::vector<std::string> args = {
+                "-f", "OpenFileGDB",
+                "-dim", keepZ ? "XYZ" : "XY"
+            };
+
+            // Explode collections
+            if (explodeCollections) {
+                args.push_back("-explodecollections");
+            }
+
+            // Global options
+            if (skipFailures) args.push_back("-skipfailures");
+            if (makeValid) args.push_back("-makevalid");
+            if (preserveFid) args.push_back("-preserve_fid");
+
+            // Simplify geometry
+            if (simplifyTolerance > 0) {
+                args.insert(args.end(), {"-simplify", std::to_string(simplifyTolerance)});
+            }
+
+            // Optional layer rename
+            if (!layerName.empty()) {
+                args.insert(args.end(), {"-nln", layerName});
+            }
+
+            // Optional geometry filter
+            const std::string where = whereFromFilter(geometryTypeFilter);
+            if (!where.empty()) {
+                args.insert(args.end(), {"-where", where});
+            }
+
+            // User-provided WHERE clause
+            if (!whereClause.empty()) {
+                args.insert(args.end(), {"-where", whereClause});
+            }
+
+            // Field selection
+            if (!selectFields.empty()) {
+                args.insert(args.end(), {"-select", selectFields});
+            }
+
+            pushCrsArgs(args, poSrcDS, sourceCrs, targetCrs);
+
+            GDALDataset* dst = runVectorTranslate(poSrcDS, gdbDir, args);
+            if (!dst) {
+                GDALClose(poSrcDS);
+                throw std::runtime_error("Vector translate to OpenFileGDB failed");
+            }
+            GDALClose(dst);
+
+            // Now ZIP the .gdb directory
+            const std::string zipPath = "/vsimem/output.zip";
+            copyDirToZip(gdbDir, zipPath, gdbName);
+
+            // Collect the resulting ZIP bytes
+            vsi_l_offset zipLen = 0;
+            GByte* zipBuf = VSIGetMemFileBuffer(zipPath.c_str(), &zipLen, FALSE);
+            if (zipBuf && zipLen > 0) {
+                result.assign(zipBuf, zipBuf + zipLen);
+            } else {
+                throw std::runtime_error("Failed to create FileGDB ZIP");
+            }
+
+            // Cleanup
+            VSIRmdirRecursive(gdbDir.c_str());
+            VSIUnlink(zipPath.c_str());
+        }
         else {
-            // Non-SHP: single output file in /vsimem
+            // Non-SHP/GDB: single output file in /vsimem
             const std::string outPath = "/vsimem/output" + outExt;
 
             std::vector<std::string> args = {
@@ -956,7 +1102,7 @@ std::vector<uint8_t> Native::convertVector(
         GDALClose(poSrcDS);
 
         // cleanup input
-        if (toLower(inputFormat) == "shapefile") {
+        if (inFmt == "shapefile" || inFmt == "openfilegdb") {
             VSIUnlink("/vsimem/input.zip");
         } else {
             VSIUnlink(inputPath.c_str());

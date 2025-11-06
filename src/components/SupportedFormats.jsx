@@ -271,6 +271,15 @@ const SUPPORTED_FORMATS = [
     description: 'Microsoft Excel workbook with OGR support for vector data in worksheets.',
     useCase: 'Business reporting, lightweight data exchange'
   },
+  {
+    value: 'openfilegdb',
+    label: 'OpenFileGDB',
+    downloadExt: '.gdb.zip',
+    extensions: ['gdb.zip', 'zip'],
+    capabilities: CAPABILITIES.inputOutput,
+    description: 'Esri File Geodatabase format (.gdb folder packaged as ZIP). Modern alternative to Shapefile with multi-layer support.',
+    useCase: 'ArcGIS workflows, government datasets, enterprise GIS'
+  },
   // ===== Input-Only (Read-Only) Formats =====
   {
     value: 'topojson',
