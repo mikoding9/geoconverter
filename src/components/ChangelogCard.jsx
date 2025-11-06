@@ -13,7 +13,7 @@ export function ChangelogCard() {
         <InformationCircleIcon className="-top-1 -right-1 absolute w-5 h-5 mt-0.5 text-emerald-300" />
         <p className="font-medium text-emerald-100 mb-1">Latest update</p>
         <p className="text-emerald-200/90 leading-relaxed">
-          Now supports multiple file selection and folder uploads! Batch convert files with automatic format detection. Unsupported files are filtered with clear error messages.
+          Main processing now runs in a dedicated web worker, enabling conversions up to 100 MB. Added support for (zipped) File Geodatabase (GDB) uploads.
         </p>
       </div>
     </motion.aside>
