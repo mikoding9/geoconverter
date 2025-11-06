@@ -170,6 +170,9 @@ function App() {
   const [previewData, setPreviewData] = useState(null);
   const [isLoadingPreview, setIsLoadingPreview] = useState(false);
 
+  // Preview cache - cache preview data by file name, size, and lastModified
+  const previewCache = useRef({});
+
   // Help dialog state
   const [showHelp, setShowHelp] = useState(false);
 
@@ -246,10 +249,24 @@ function App() {
     // Validate files and separate supported from unsupported
     const supportedFiles = [];
     const unsupportedFiles = [];
+    const largeFiles = [];
+    const veryLargeFiles = [];
+
+    // File size thresholds (in bytes)
+    const WARNING_SIZE = 50 * 1024 * 1024; // 50 MB
+    const DANGER_SIZE = 100 * 1024 * 1024; // 100 MB
+    const CRITICAL_SIZE = 150 * 1024 * 1024; // 150 MB
 
     files.forEach((file) => {
       if (isFileSupported(file.name)) {
         supportedFiles.push(file);
+
+        // Check file size for warnings
+        if (file.size >= CRITICAL_SIZE) {
+          veryLargeFiles.push({ name: file.name, size: file.size });
+        } else if (file.size >= WARNING_SIZE) {
+          largeFiles.push({ name: file.name, size: file.size });
+        }
       } else {
         unsupportedFiles.push(file.name);
       }
@@ -274,8 +291,34 @@ function App() {
       return;
     }
 
+    // Show warnings for large files
+    if (veryLargeFiles.length > 0) {
+      const fileInfo = veryLargeFiles.map(f =>
+        `${f.name} (${(f.size / 1024 / 1024).toFixed(1)} MB)`
+      ).join(", ");
+
+      setToast({
+        isOpen: true,
+        message: `⚠️ Very large file detected: ${fileInfo}. Files over 100 MB may fail due to browser memory limits (2 GB). Consider: 1) Splitting the file into smaller parts, 2) Using "Attribute Filter" to process subsets, 3) Enabling "Simplify" to reduce geometry complexity.`,
+        type: "warning",
+      });
+    } else if (largeFiles.length > 0) {
+      const fileInfo = largeFiles.map(f =>
+        `${f.name} (${(f.size / 1024 / 1024).toFixed(1)} MB)`
+      ).join(", ");
+
+      setToast({
+        isOpen: true,
+        message: `⚠️ Large file detected: ${fileInfo}. May require significant memory. If conversion fails, try using Advanced Options to filter or simplify the data.`,
+        type: "warning",
+      });
+    }
+
     setSelectedFiles(supportedFiles);
     setPreviewData(null); // Reset preview data
+
+    // Clear preview cache when new files are selected to prevent memory buildup
+    previewCache.current = {};
 
     // Auto-detect input format from first file's extension
     const firstFile = supportedFiles[0];
@@ -480,7 +523,6 @@ function App() {
 
       // Use specified file or default to first file
       const selectedFile = fileToPreview || selectedFiles[0];
-      const arrayBuffer = await selectedFile.arrayBuffer();
 
       // Get final source CRS (use custom if 'custom' is selected)
       const finalSourceCrs =
@@ -488,6 +530,29 @@ function App() {
 
       // Detect format for this specific file
       const fileFormat = detectFormatFromFile(selectedFile.name) || inputFormat;
+
+      // Generate cache key based on file properties and CRS
+      const cacheKey = `${selectedFile.name}_${selectedFile.size}_${selectedFile.lastModified}_${fileFormat}_${finalSourceCrs || 'auto'}`;
+
+      // Check if we have cached preview data
+      if (previewCache.current[cacheKey]) {
+        console.log('✓ Using cached preview data for:', selectedFile.name);
+        setPreviewData(previewCache.current[cacheKey]);
+        setShowPreview(true);
+        setIsLoadingPreview(false);
+
+        // Show toast to inform user that cached data is being used
+        setToast({
+          isOpen: true,
+          message: `✓ Preview loaded instantly from cache`,
+          type: "success",
+        });
+
+        return;
+      }
+
+      console.log('⟳ Loading preview data for:', selectedFile.name);
+      const arrayBuffer = await selectedFile.arrayBuffer();
 
       // Call worker to extract metadata (off main thread)
       let jsonString = await getVectorInfoWithWorker(
@@ -588,6 +653,10 @@ function App() {
       console.log("Bbox:", metadata.bbox);
       console.log("Feature Count:", metadata.featureCount);
       console.log("Layers:", metadata.layers);
+
+      // Cache the preview data
+      previewCache.current[cacheKey] = metadata;
+      console.log('✓ Preview data cached for:', selectedFile.name);
 
       setPreviewData(metadata);
       setShowPreview(true);
@@ -915,6 +984,26 @@ function App() {
       const friendlyErrorMessage = (errorMsg) => {
         const lowerMsg = errorMsg.toLowerCase();
         const prefix = errorMsg.split(":")[0] || "";
+
+        // Memory/WASM errors - HIGHEST PRIORITY
+        if (
+          lowerMsg.includes("cannot enlarge memory") ||
+          lowerMsg.includes("memory limit") ||
+          lowerMsg.includes("out of memory") ||
+          lowerMsg.includes("failed to allocate") ||
+          lowerMsg.includes("requested") && lowerMsg.includes("bytes") && lowerMsg.includes("limit")
+        ) {
+          return `${prefix}: ❌ Browser memory limit exceeded (2 GB WebAssembly limit). Your file is too large to process in the browser. Solutions: 1️⃣ Split the file into smaller parts using desktop GIS software (QGIS/ArcGIS), 2️⃣ Use "Attribute Filter" (WHERE clause) to process data in chunks (e.g., "FID < 10000", then "FID >= 10000 AND FID < 20000"), 3️⃣ Enable "Simplify Tolerance" (try 0.001-0.01) to reduce geometry complexity, 4️⃣ Use "Select Fields" to include only essential attributes, 5️⃣ Disable "Keep Z Dimension" to save 33% memory. For very large datasets, consider using desktop GDAL/ogr2ogr instead.`;
+        }
+
+        // PROJ/SQLite errors (often follows memory errors)
+        if (
+          lowerMsg.includes("proj:") ||
+          lowerMsg.includes("sqlite error") ||
+          lowerMsg.includes("no such table: metadata")
+        ) {
+          return `${prefix}: ⚠️ Coordinate system database error. This often occurs after a memory failure. Try reducing file size or processing in smaller chunks using "Attribute Filter" in Advanced Options.`;
+        }
 
         // Skip failures suggestion
         if (
@@ -1678,6 +1767,29 @@ function App() {
                           </FieldGroup>
                         </div>
                       )}
+
+                      {/* Large File Tips */}
+                      <div className="space-y-3 pt-4 border-t border-zinc-800">
+                        <Text className="font-medium text-zinc-300">
+                          💡 Tips for Large Files (50+ MB)
+                        </Text>
+                        <div className="p-3 bg-amber-500/10 border border-amber-500/30 rounded-lg">
+                          <Text className="text-xs text-amber-200 font-medium mb-2">
+                            ⚠️ Browser Limitation: 2 GB WebAssembly Memory Limit
+                          </Text>
+                          <Text className="text-xs text-zinc-300 space-y-1">
+                            <div className="mb-2">Files over 100 MB may fail. To process large datasets:</div>
+                            <div className="ml-3 space-y-1">
+                              <div>• <strong>Process in chunks:</strong> Use "Attribute Filter" to split data (e.g., "FID {'<'} 10000")</div>
+                              <div>• <strong>Reduce complexity:</strong> Enable "Simplify Tolerance" (0.001-0.01 for web maps)</div>
+                              <div>• <strong>Remove attributes:</strong> Use "Select Fields" to include only essential fields</div>
+                              <div>• <strong>Disable Z coords:</strong> Turn off "Keep Z Dimension" (saves 33% memory)</div>
+                              <div>• <strong>Filter geometry:</strong> Use "Geometry Type Filter" to process one type at a time</div>
+                              <div>• <strong>Desktop alternative:</strong> For files {'>'} 200 MB, use QGIS or ogr2ogr instead</div>
+                            </div>
+                          </Text>
+                        </div>
+                      </div>
 
                       {/* Automatic Features Info */}
                       <div className="space-y-3 pt-4 border-t border-zinc-800">

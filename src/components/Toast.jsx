@@ -1,6 +1,6 @@
 import { useEffect } from 'react'
 import { motion, AnimatePresence } from 'motion/react'
-import { CheckCircleIcon, XCircleIcon, XMarkIcon } from '@heroicons/react/24/outline'
+import { CheckCircleIcon, XCircleIcon, ExclamationTriangleIcon, XMarkIcon } from '@heroicons/react/24/outline'
 import clsx from 'clsx'
 
 export function Toast({ message, type = 'success', isOpen, onClose, duration = 5000 }) {
@@ -27,7 +27,8 @@ export function Toast({ message, type = 'success', isOpen, onClose, duration = 5
             className={clsx(
               'flex items-start gap-3 px-4 py-3 rounded-lg shadow-lg backdrop-blur-sm border',
               type === 'success' && 'bg-emerald-500/10 border-emerald-500/50 text-emerald-100',
-              type === 'error' && 'bg-red-500/10 border-red-500/50 text-red-100'
+              type === 'error' && 'bg-red-500/10 border-red-500/50 text-red-100',
+              type === 'warning' && 'bg-amber-500/10 border-amber-500/50 text-amber-100'
             )}
           >
             {type === 'success' && (
@@ -35,6 +36,9 @@ export function Toast({ message, type = 'success', isOpen, onClose, duration = 5
             )}
             {type === 'error' && (
               <XCircleIcon className="w-5 h-5 text-red-500 flex-shrink-0 mt-0.5" />
+            )}
+            {type === 'warning' && (
+              <ExclamationTriangleIcon className="w-5 h-5 text-amber-500 flex-shrink-0 mt-0.5" />
             )}
 
             <p className="text-sm flex-1">{message}</p>
@@ -44,7 +48,8 @@ export function Toast({ message, type = 'success', isOpen, onClose, duration = 5
               className={clsx(
                 'flex-shrink-0 p-0.5 rounded hover:bg-white/10 transition-colors',
                 type === 'success' && 'text-emerald-400 hover:text-emerald-300',
-                type === 'error' && 'text-red-400 hover:text-red-300'
+                type === 'error' && 'text-red-400 hover:text-red-300',
+                type === 'warning' && 'text-amber-400 hover:text-amber-300'
               )}
             >
               <XMarkIcon className="w-4 h-4" />
