@@ -55,7 +55,7 @@ export function HelpDialog({ isOpen, onClose }) {
                         <span className="flex-shrink-0 w-6 h-6 rounded-full bg-emerald-500/20 text-emerald-400 flex items-center justify-center text-sm font-semibold">2</span>
                         <div>
                           <h4 className="font-semibold text-zinc-200 mb-1">Choose Output Format</h4>
-                          <p className="text-sm text-zinc-400">Select from 10 formats: GeoJSON, Shapefile, GeoPackage, KML, GPX, GML, FlatGeobuf, CSV, PMTiles, or MBTiles</p>
+                          <p className="text-sm text-zinc-400">Select from 35+ formats including GeoJSON, Shapefile, GeoPackage, KML, GPX, GML, FlatGeobuf, CSV, PMTiles, MBTiles, and more</p>
                         </div>
                       </div>
                     </div>
@@ -86,61 +86,6 @@ export function HelpDialog({ isOpen, onClose }) {
                 <section className="space-y-3">
                   <h3 className="text-lg font-semibold text-emerald-400">Frequently Asked Questions</h3>
                   <div className="space-y-2">
-                    {/* FAQ: What is GeoConverter */}
-                    <div className="bg-zinc-950/50 border border-zinc-800 rounded-lg overflow-hidden">
-                      <button
-                        onClick={() => toggleFaq('what-is')}
-                        className="w-full px-4 py-3 flex items-center justify-between text-left hover:bg-zinc-900/50 transition-colors"
-                      >
-                        <span className="font-semibold text-zinc-200">What is GeoConverter?</span>
-                        <ChevronDownIcon className={`w-5 h-5 text-emerald-400 transition-transform ${openFaq['what-is'] ? 'rotate-180' : ''}`} />
-                      </button>
-                      {openFaq['what-is'] && (
-                        <div className="px-4 pb-4 text-sm text-zinc-300 leading-relaxed border-t border-zinc-800 pt-3">
-                          GeoConverter is a powerful, privacy-first geospatial file converter that runs entirely in your browser.
-                          Transform vector data between 30+ different GIS formats without sending files to any server.
-                          All processing happens locally using WebAssembly, powered by GDAL/OGR - the industry-standard geospatial library.
-                        </div>
-                      )}
-                    </div>
-
-                    {/* FAQ: Who Should Use This */}
-                    <div className="bg-zinc-950/50 border border-zinc-800 rounded-lg overflow-hidden">
-                      <button
-                        onClick={() => toggleFaq('who-should-use')}
-                        className="w-full px-4 py-3 flex items-center justify-between text-left hover:bg-zinc-900/50 transition-colors"
-                      >
-                        <span className="font-semibold text-zinc-200">Who Should Use This?</span>
-                        <ChevronDownIcon className={`w-5 h-5 text-emerald-400 transition-transform ${openFaq['who-should-use'] ? 'rotate-180' : ''}`} />
-                      </button>
-                      {openFaq['who-should-use'] && (
-                        <div className="px-4 pb-4 border-t border-zinc-800 pt-3">
-                          <ul className="space-y-2 text-sm text-zinc-300">
-                            <li className="flex items-start gap-2">
-                              <span className="text-emerald-400 mt-1">•</span>
-                              <span><strong className="text-zinc-200">GIS Professionals:</strong> Convert between formats for different GIS software (QGIS, ArcGIS, etc.)</span>
-                            </li>
-                            <li className="flex items-start gap-2">
-                              <span className="text-emerald-400 mt-1">•</span>
-                              <span><strong className="text-zinc-200">Web Developers:</strong> Prepare geospatial data for web mapping applications</span>
-                            </li>
-                            <li className="flex items-start gap-2">
-                              <span className="text-emerald-400 mt-1">•</span>
-                              <span><strong className="text-zinc-200">Data Analysts:</strong> Convert spatial data for analysis in different tools</span>
-                            </li>
-                            <li className="flex items-start gap-2">
-                              <span className="text-emerald-400 mt-1">•</span>
-                              <span><strong className="text-zinc-200">GPS Users:</strong> Convert tracks and waypoints between formats</span>
-                            </li>
-                            <li className="flex items-start gap-2">
-                              <span className="text-emerald-400 mt-1">•</span>
-                              <span><strong className="text-zinc-200">Students & Educators:</strong> Learn about geospatial formats and transformations</span>
-                            </li>
-                          </ul>
-                        </div>
-                      )}
-                    </div>
-
                     {/* FAQ: Shapefile Upload */}
                     <div className="bg-zinc-950/50 border border-zinc-800 rounded-lg overflow-hidden">
                       <button
@@ -153,23 +98,22 @@ export function HelpDialog({ isOpen, onClose }) {
                       {openFaq['shapefile'] && (
                         <div className="px-4 pb-4 space-y-2 text-sm text-zinc-300 border-t border-zinc-800 pt-3">
                           <p>
-                            Shapefiles consist of multiple files that must be uploaded together as a <strong className="text-zinc-200">ZIP archive</strong>.
+                            Keep every companion file a shapefile needs inside a single <strong className="text-zinc-200">ZIP archive</strong> before dragging it into GeoConverter.
                           </p>
                           <p className="text-xs text-zinc-400">
-                            A typical shapefile ZIP should contain:
+                            Quick checklist for a healthy upload:
                           </p>
-                          <ul className="text-xs text-zinc-400 ml-4 space-y-1">
-                            <li>• <code className="text-emerald-400">.shp</code> - geometry data (required)</li>
-                            <li>• <code className="text-emerald-400">.shx</code> - shape index (required)</li>
-                            <li>• <code className="text-emerald-400">.dbf</code> - attribute data (required)</li>
-                            <li>• <code className="text-emerald-400">.prj</code> - projection info (optional but recommended)</li>
-                            <li>• <code className="text-emerald-400">.cpg</code> - encoding info (optional)</li>
-                          </ul>
+                          <ol className="text-xs text-zinc-400 ml-5 space-y-1 list-decimal">
+                            <li>Place the matching <code className="text-emerald-400">.shp</code>, <code className="text-emerald-400">.shx</code>, <code className="text-emerald-400">.dbf</code>, and optional <code className="text-emerald-400">.prj/.cpg</code> files in the same folder.</li>
+                            <li>Select those files (only one dataset at a time) and compress them into <code className="text-emerald-400">mydata.zip</code>.</li>
+                            <li>Ensure the ZIP does not contain nested folders—files should live at the top level so GeoConverter can find them instantly.</li>
+                            <li>Drop the ZIP onto the uploader; the app automatically unpacks, validates the trio of required parts, and reads the projection from <code className="text-emerald-400">.prj</code> when present.</li>
+                          </ol>
                           <div className="bg-amber-500/10 border border-amber-500/30 rounded p-2 text-xs text-amber-200/90 mt-2">
-                            <strong>⚠️ Important:</strong> Currently, only <strong>one shapefile set per ZIP</strong> is supported. If you have multiple shapefiles, convert them separately.
+                            <strong>⚠️ Important:</strong> Only <strong>one shapefile set per ZIP</strong> is supported today. Bundle additional datasets into their own ZIPs and convert sequentially.
                           </div>
                           <p className="text-xs text-zinc-400">
-                            💡 Simply select all shapefile components and create a ZIP before uploading.
+                            💡 If you are unsure whether every piece made it into the archive, open the ZIP first—missing <code className="text-emerald-400">.dbf</code> or <code className="text-emerald-400">.shx</code> files are the most common cause of upload errors.
                           </p>
                         </div>
                       )}
@@ -185,27 +129,33 @@ export function HelpDialog({ isOpen, onClose }) {
                         <ChevronDownIcon className={`w-5 h-5 text-emerald-400 transition-transform ${openFaq['crs'] ? 'rotate-180' : ''}`} />
                       </button>
                       {openFaq['crs'] && (
-                        <div className="px-4 pb-4 space-y-2 text-sm text-zinc-300 border-t border-zinc-800 pt-3">
-                          <p>You can specify CRS in two formats:</p>
+                        <div className="px-4 pb-4 space-y-3 text-sm text-zinc-300 border-t border-zinc-800 pt-3">
+                          <p>
+                            GeoConverter reads CRS metadata automatically, but you can override it from <strong className="text-zinc-200">Advanced Options → CRS</strong> whenever the source file is missing or mislabeled.
+                          </p>
                           <div className="space-y-2 text-xs">
                             <div className="bg-zinc-900/50 border border-zinc-700/50 rounded p-2">
-                              <p className="text-zinc-400 mb-1"><strong className="text-zinc-200">1. EPSG Codes</strong> (recommended):</p>
-                              <code className="text-emerald-400">epsg:4326</code> <span className="text-zinc-500">(WGS 84)</span><br/>
-                              <code className="text-emerald-400">epsg:3857</code> <span className="text-zinc-500">(Web Mercator)</span><br/>
-                              <code className="text-emerald-400">epsg:32633</code> <span className="text-zinc-500">(UTM Zone 33N)</span>
+                              <p className="text-zinc-400 mb-1"><strong className="text-zinc-200">EPSG codes (fastest):</strong></p>
+                              <p className="text-zinc-400">Enter familiar identifiers like <code className="text-emerald-400">epsg:4326</code>, <code className="text-emerald-400">epsg:3857</code>, or <code className="text-emerald-400">epsg:32633</code>. GeoConverter instantly expands them to the required PROJ definition.</p>
                             </div>
                             <div className="bg-zinc-900/50 border border-zinc-700/50 rounded p-2">
-                              <p className="text-zinc-400 mb-1"><strong className="text-zinc-200">2. PROJ Strings</strong> (advanced):</p>
-                              <code className="text-emerald-400">+proj=longlat +datum=WGS84 +no_defs</code><br/>
-                              <code className="text-emerald-400">+proj=merc +a=6378137 +b=6378137</code>
+                              <p className="text-zinc-400 mb-1"><strong className="text-zinc-200">Custom PROJ strings (advanced):</strong></p>
+                              <p className="text-zinc-400">Paste full definitions such as <code className="text-emerald-400">+proj=merc +a=6378137 +b=6378137</code> for bespoke or local grids.</p>
                             </div>
                           </div>
-                          <div className="bg-blue-500/10 border border-blue-500/30 rounded p-2 text-xs text-blue-200/90 mt-2">
-                            <strong>ℹ️ Auto-translation:</strong> When you enter an EPSG code (e.g., <code className="text-blue-300">epsg:4326</code>), it will be automatically translated to a PROJ string when you <strong>click outside the input box</strong>. PROJ strings are the actual format used for conversion.
+                          <div className="bg-blue-500/10 border border-blue-500/30 rounded p-2 text-xs text-blue-200/90">
+                            <strong>ℹ️ Tip:</strong> Source CRS is optional when the dataset already advertises one. Target CRS is required only if you are reprojecting; leave it blank to keep the original coordinates.
                           </div>
-                          <p className="text-xs text-zinc-400">
-                            💡 Leave the Source CRS field empty to auto-detect from your file (works if the file contains projection info).
-                          </p>
+                          <div className="grid gap-2 text-xs text-zinc-400">
+                            <div className="bg-zinc-950/40 border border-zinc-800 rounded p-2">
+                              <p className="text-zinc-200 font-semibold">When to set Source CRS?</p>
+                              <p>Use it when the file is missing a <code className="text-emerald-400">.prj</code> or when you know the metadata is wrong.</p>
+                            </div>
+                            <div className="bg-zinc-950/40 border border-zinc-800 rounded p-2">
+                              <p className="text-zinc-200 font-semibold">When to set Target CRS?</p>
+                              <p>Fill it to reproject (e.g., convert local UTM data to <code className="text-emerald-400">epsg:4326</code> before exporting GeoJSON).</p>
+                            </div>
+                          </div>
                         </div>
                       )}
                     </div>
@@ -220,32 +170,24 @@ export function HelpDialog({ isOpen, onClose }) {
                         <ChevronDownIcon className={`w-5 h-5 text-emerald-400 transition-transform ${openFaq['when-skip-failures'] ? 'rotate-180' : ''}`} />
                       </button>
                       {openFaq['when-skip-failures'] && (
-                        <div className="px-4 pb-4 space-y-2 text-sm text-zinc-300 border-t border-zinc-800 pt-3">
-                          <p>Enable "Skip Failures" in these common scenarios:</p>
-                          <div className="space-y-2 text-xs text-zinc-300 mt-2">
+                        <div className="px-4 pb-4 space-y-3 text-sm text-zinc-300 border-t border-zinc-800 pt-3">
+                          <p>Turn this on when you would rather receive a usable partial dataset than stop at the first invalid feature.</p>
+                          <div className="grid gap-2 text-xs text-zinc-300">
                             <div className="bg-zinc-900/50 border border-zinc-700/50 rounded p-2">
-                              <p className="text-zinc-200 font-semibold mb-1">📍 GPX to GeoJSON conversion</p>
-                              <p className="text-zinc-400">
-                                GPX files often contain metadata elements that cannot be converted to geometries.
-                                Enable "Skip Failures" to ignore these non-geometric features and convert only the actual track points, routes, and waypoints.
-                              </p>
+                              <p className="text-zinc-200 font-semibold mb-1">📍 GPX, KML, or CAD exports</p>
+                              <p className="text-zinc-400">These formats often include metadata nodes without geometries. Skipping failures lets you keep the actual track points and polylines while ignoring unsupported bits.</p>
                             </div>
                             <div className="bg-zinc-900/50 border border-zinc-700/50 rounded p-2">
-                              <p className="text-zinc-200 font-semibold mb-1">🔧 Datasets with known errors</p>
-                              <p className="text-zinc-400">
-                                When working with large datasets that may contain a few invalid features,
-                                you can extract the valid data instead of failing the entire conversion.
-                              </p>
+                              <p className="text-zinc-200 font-semibold mb-1">🔧 Imperfect datasets</p>
+                              <p className="text-zinc-400">Large municipal layers sometimes contain a handful of invalid polygons. Rather than fixing everything first, skip the bad actors and come back to them later.</p>
                             </div>
                             <div className="bg-zinc-900/50 border border-zinc-700/50 rounded p-2">
-                              <p className="text-zinc-200 font-semibold mb-1">🌐 Mixed or complex source data</p>
-                              <p className="text-zinc-400">
-                                Files with mixed geometry types, unsupported elements, or edge cases that may cause some features to fail validation.
-                              </p>
+                              <p className="text-zinc-200 font-semibold mb-1">🌐 Mixed geometry collections</p>
+                              <p className="text-zinc-400">Collections that combine points, multipolygons, or exotic geometry types can trigger conversion errors—skipping failures ensures the supported features finish exporting.</p>
                             </div>
                           </div>
-                          <p className="text-xs text-zinc-400 mt-2">
-                            💡 Combine with <strong className="text-zinc-200">"Make Valid"</strong> to auto-fix geometry errors before skipping failures.
+                          <p className="text-xs text-zinc-400">
+                            💡 Pair with <strong className="text-zinc-200">Make Valid</strong> to repair easy fixes first, then skip anything that still cannot be converted.
                           </p>
                         </div>
                       )}
@@ -261,23 +203,99 @@ export function HelpDialog({ isOpen, onClose }) {
                         <ChevronDownIcon className={`w-5 h-5 text-emerald-400 transition-transform ${openFaq['skip-failures'] ? 'rotate-180' : ''}`} />
                       </button>
                       {openFaq['skip-failures'] && (
-                        <div className="px-4 pb-4 space-y-2 text-sm text-zinc-300 border-t border-zinc-800 pt-3">
-                          <p>
-                            When enabled, GeoConverter will skip invalid features instead of failing the entire conversion.
-                          </p>
-                          <div className="text-xs text-zinc-400 space-y-1 bg-zinc-900/50 border border-zinc-700/50 rounded p-3">
-                            <p><strong className="text-zinc-200">Without Skip Failures (default):</strong></p>
-                            <p>• Conversion stops if any feature has errors</p>
-                            <p>• You'll see an error message explaining what went wrong</p>
-                            <p>• No output file is generated</p>
-
-                            <p className="pt-2"><strong className="text-zinc-200">With Skip Failures enabled:</strong></p>
-                            <p>• Invalid features are skipped silently</p>
-                            <p>• Valid features are processed successfully</p>
-                            <p>• Output file contains only valid features</p>
+                        <div className="px-4 pb-4 space-y-3 text-sm text-zinc-300 border-t border-zinc-800 pt-3">
+                          <p>Skip Failures switches the converter into a "best effort" mode.</p>
+                          <div className="text-xs text-zinc-300 grid gap-3 sm:grid-cols-2">
+                            <div className="bg-zinc-900/50 border border-red-500/20 rounded p-3 space-y-1">
+                              <p className="text-zinc-200 font-semibold">Without Skip Failures</p>
+                              <p className="text-zinc-400">• Processing stops on the first invalid feature</p>
+                              <p className="text-zinc-400">• You receive an error and no output is produced</p>
+                              <p className="text-zinc-400">• Useful when you want to catch and fix every issue upfront</p>
+                            </div>
+                            <div className="bg-zinc-900/50 border border-emerald-500/20 rounded p-3 space-y-1">
+                              <p className="text-zinc-200 font-semibold">With Skip Failures enabled</p>
+                              <p className="text-zinc-400">• Problematic features are ignored; valid ones finish converting</p>
+                              <p className="text-zinc-400">• The download contains only the successful features</p>
+                              <p className="text-zinc-400">• Warning messages still explain what was skipped so you can follow up later</p>
+                            </div>
                           </div>
                           <p className="text-xs text-zinc-400">
-                            💡 This is especially useful for GPX files and datasets with metadata or non-geometric elements.
+                            💡 Ideal when you are on a deadline and just need something usable—combine it with dataset copies so you can re-run the full conversion after cleaning errors.
+                          </p>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* FAQ: File Size Limits */}
+                    <div className="bg-zinc-950/50 border border-zinc-800 rounded-lg overflow-hidden">
+                      <button
+                        onClick={() => toggleFaq('file-size')}
+                        className="w-full px-4 py-3 flex items-center justify-between text-left hover:bg-zinc-900/50 transition-colors"
+                      >
+                        <span className="font-semibold text-zinc-200">How large can my files be?</span>
+                        <ChevronDownIcon className={`w-5 h-5 text-emerald-400 transition-transform ${openFaq['file-size'] ? 'rotate-180' : ''}`} />
+                      </button>
+                      {openFaq['file-size'] && (
+                        <div className="px-4 pb-4 space-y-2 text-sm text-zinc-300 border-t border-zinc-800 pt-3">
+                          <p>
+                            GeoConverter runs in your browser, so limits depend on your device memory rather than a server quota.
+                          </p>
+                          <ul className="text-xs text-zinc-400 space-y-1">
+                            <li>• Files up to ~200&nbsp;MB usually convert smoothly on modern laptops.</li>
+                            <li>• Very large datasets may require simplifying, tiling, or filtering before loading.</li>
+                            <li>• Zipping Shapefiles or CSVs can shrink uploads dramatically and speeds up parsing.</li>
+                          </ul>
+                          <p className="text-xs text-zinc-400">
+                            💡 If the tab becomes unresponsive, try closing other heavy applications or converting the dataset in smaller chunks.
+                          </p>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* FAQ: Raster Support */}
+                    <div className="bg-zinc-950/50 border border-zinc-800 rounded-lg overflow-hidden">
+                      <button
+                        onClick={() => toggleFaq('raster')}
+                        className="w-full px-4 py-3 flex items-center justify-between text-left hover:bg-zinc-900/50 transition-colors"
+                      >
+                        <span className="font-semibold text-zinc-200">Can I convert raster imagery?</span>
+                        <ChevronDownIcon className={`w-5 h-5 text-emerald-400 transition-transform ${openFaq['raster'] ? 'rotate-180' : ''}`} />
+                      </button>
+                      {openFaq['raster'] && (
+                        <div className="px-4 pb-4 space-y-2 text-sm text-zinc-300 border-t border-zinc-800 pt-3">
+                          <p>
+                            Not yet—GeoConverter focuses on <strong className="text-zinc-200">vector formats</strong> (points, lines, polygons).
+                          </p>
+                          <p className="text-xs text-zinc-400">
+                            Common raster formats such as GeoTIFF or JPEG2000 are not loaded in the browser build of GDAL for performance reasons.
+                            If you need raster reprojection or tiling, use desktop GDAL/OGR or cloud tooling, then bring the derived vectors back here.
+                          </p>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* FAQ: Offline Usage */}
+                    <div className="bg-zinc-950/50 border border-zinc-800 rounded-lg overflow-hidden">
+                      <button
+                        onClick={() => toggleFaq('offline')}
+                        className="w-full px-4 py-3 flex items-center justify-between text-left hover:bg-zinc-900/50 transition-colors"
+                      >
+                        <span className="font-semibold text-zinc-200">Does GeoConverter work offline?</span>
+                        <ChevronDownIcon className={`w-5 h-5 text-emerald-400 transition-transform ${openFaq['offline'] ? 'rotate-180' : ''}`} />
+                      </button>
+                      {openFaq['offline'] && (
+                        <div className="px-4 pb-4 space-y-2 text-sm text-zinc-300 border-t border-zinc-800 pt-3">
+                          <p>
+                            After the app loads once, all conversions happen locally, so you can disconnect and keep working.
+                          </p>
+                          <ul className="text-xs text-zinc-400 space-y-1">
+                            <li>• Initial load requires internet to download the WebAssembly bundle.</li>
+                            <li>• Refreshing the page while offline works as long as the assets remain in your browser cache.</li>
+                            <li>• Feedback form and release notes still need a connection.</li>
+                            <li>• EPSG auto-translation pulls definitions from the web—when offline, paste the full PROJ string instead of an EPSG code.</li>
+                          </ul>
+                          <p className="text-xs text-zinc-400">
+                            💡 Add GeoConverter as a progressive web app (PWA) to pin it offline on supported browsers.
                           </p>
                         </div>
                       )}
@@ -313,46 +331,6 @@ export function HelpDialog({ isOpen, onClose }) {
                       <h4 className="font-semibold text-zinc-200 text-sm mb-1">⚡ Fast & Efficient</h4>
                       <p className="text-xs text-zinc-400">WebAssembly-powered GDAL for near-native performance</p>
                     </div>
-                  </div>
-                </section>
-
-                {/* Supported Formats */}
-                <section className="space-y-3">
-                  <h3 className="text-lg font-semibold text-emerald-400">Supported Formats</h3>
-                  <div className="bg-zinc-950/50 border border-zinc-800 rounded-lg p-4 space-y-3 text-sm text-zinc-300">
-                    <p>
-                      Convert between <strong className="text-zinc-100">30+ GDAL vector formats</strong> including popular
-                      GIS standards and specialist workflows.
-                    </p>
-                    <div className="grid gap-2 sm:grid-cols-2">
-                      <div className="flex items-start gap-2">
-                        <span className="text-emerald-400 mt-0.5">✓</span>
-                        <span>
-                          <strong>GeoJSON, GeoPackage, Shapefile</strong>, KML, GPX, GML, FlatGeobuf, CSV, DXF, DGN
-                        </span>
-                      </div>
-                      <div className="flex items-start gap-2">
-                        <span className="text-emerald-400 mt-0.5">✓</span>
-                        <span>
-                          <strong>MBTiles, PMTiles, SQLite, XLSX</strong>, JSON-FG, GeoRSS, MapML, GeoJSONSeq, Geoconcept
-                        </span>
-                      </div>
-                      <div className="flex items-start gap-2">
-                        <span className="text-emerald-400 mt-0.5">✓</span>
-                        <span>
-                          S-57, Selafin, VICAR, WAsP, ODS, OGR GMT, PCIDSK, PDS4, VDV and more
-                        </span>
-                      </div>
-                      <div className="flex items-start gap-2">
-                        <span className="text-emerald-400 mt-0.5">ⓘ</span>
-                        <span>
-                          <strong>TopoJSON</strong> is input-only; <strong>PGDump</strong> is output-only for PostGIS dumps
-                        </span>
-                      </div>
-                    </div>
-                    <p className="text-xs text-zinc-400">
-                      Need something else? Let us know via the feedback form—GDAL supports dozens more drivers.
-                    </p>
                   </div>
                 </section>
 
