@@ -236,6 +236,111 @@ function App() {
     return detectFormatFromFile(filename) !== null;
   };
 
+  // Helper to extract base name without extension for shapefile grouping
+  const getShapefileBaseName = (filename) => {
+    const lowerName = filename.toLowerCase();
+    const shapefileExts = ['.shp', '.shx', '.dbf', '.prj', '.cpg', '.sbn', '.sbx', '.fbn', '.fbx', '.ain', '.aih', '.ixs', '.mxs', '.atx', '.shp.xml', '.qix'];
+
+    for (const ext of shapefileExts) {
+      if (lowerName.endsWith(ext)) {
+        return filename.substring(0, filename.length - ext.length);
+      }
+    }
+    return null;
+  };
+
+  // Helper to extract base name for MapInfo TAB files
+  const getMapInfoTabBaseName = (filename) => {
+    const lowerName = filename.toLowerCase();
+    const mapinfoExts = ['.tab', '.dat', '.map', '.id', '.ind'];
+
+    for (const ext of mapinfoExts) {
+      if (lowerName.endsWith(ext)) {
+        return filename.substring(0, filename.length - ext.length);
+      }
+    }
+    return null;
+  };
+
+  // Helper to extract base name for MapInfo MIF/MID files
+  const getMapInfoMifBaseName = (filename) => {
+    const lowerName = filename.toLowerCase();
+    if (lowerName.endsWith('.mif')) {
+      return filename.substring(0, filename.length - 4);
+    }
+    if (lowerName.endsWith('.mid')) {
+      return filename.substring(0, filename.length - 4);
+    }
+    return null;
+  };
+
+  // Group shapefile components by base name
+  const groupShapefileComponents = (files) => {
+    const shapefileGroups = new Map();
+    const otherFiles = [];
+
+    files.forEach(file => {
+      const baseName = getShapefileBaseName(file.name);
+      if (baseName && detectFormatFromFile(file.name) === 'shapefile') {
+        if (!shapefileGroups.has(baseName)) {
+          shapefileGroups.set(baseName, []);
+        }
+        shapefileGroups.get(baseName).push(file);
+      } else {
+        otherFiles.push(file);
+      }
+    });
+
+    return { shapefileGroups, otherFiles };
+  };
+
+  // Group all multi-file formats (shapefiles, MapInfo TAB, MapInfo MIF/MID)
+  const groupMultiFileFormats = (files) => {
+    const shapefileGroups = new Map();
+    const mapinfoTabGroups = new Map();
+    const mapinfoMifGroups = new Map();
+    const otherFiles = [];
+
+    files.forEach(file => {
+      const format = detectFormatFromFile(file.name);
+
+      // Try shapefile
+      const shpBaseName = getShapefileBaseName(file.name);
+      if (shpBaseName && format === 'shapefile') {
+        if (!shapefileGroups.has(shpBaseName)) {
+          shapefileGroups.set(shpBaseName, []);
+        }
+        shapefileGroups.get(shpBaseName).push(file);
+        return;
+      }
+
+      // Try MapInfo TAB
+      const tabBaseName = getMapInfoTabBaseName(file.name);
+      if (tabBaseName && format === 'mapinfo') {
+        if (!mapinfoTabGroups.has(tabBaseName)) {
+          mapinfoTabGroups.set(tabBaseName, []);
+        }
+        mapinfoTabGroups.get(tabBaseName).push(file);
+        return;
+      }
+
+      // Try MapInfo MIF/MID
+      const mifBaseName = getMapInfoMifBaseName(file.name);
+      if (mifBaseName && format === 'mapinfomif') {
+        if (!mapinfoMifGroups.has(mifBaseName)) {
+          mapinfoMifGroups.set(mifBaseName, []);
+        }
+        mapinfoMifGroups.get(mifBaseName).push(file);
+        return;
+      }
+
+      // Not a multi-file format component
+      otherFiles.push(file);
+    });
+
+    return { shapefileGroups, mapinfoTabGroups, mapinfoMifGroups, otherFiles };
+  };
+
   const handleFileChange = (e) => {
     const files = Array.from(e.target.files || []);
     if (files.length > 0) {
@@ -529,14 +634,96 @@ function App() {
         sourceCrs === "custom" ? customSourceCrs : sourceCrs;
 
       // Detect format for this specific file
-      const fileFormat = detectFormatFromFile(selectedFile.name) || inputFormat;
+      let fileFormat = detectFormatFromFile(selectedFile.name) || inputFormat;
 
-      // Generate cache key based on file properties and CRS
-      const cacheKey = `${selectedFile.name}_${selectedFile.size}_${selectedFile.lastModified}_${fileFormat}_${finalSourceCrs || 'auto'}`;
+      // Check if this is a shapefile component that needs bundling
+      let arrayBuffer;
+      let displayName = selectedFile.name;
+      let cacheKey;
+
+      // Check if this is a multi-file format that needs bundling
+      const shpBaseName = getShapefileBaseName(selectedFile.name);
+      const tabBaseName = getMapInfoTabBaseName(selectedFile.name);
+      const mifBaseName = getMapInfoMifBaseName(selectedFile.name);
+
+      if (shpBaseName && fileFormat === 'shapefile' && !selectedFile.name.toLowerCase().endsWith('.zip')) {
+        // This is a raw shapefile component - group with related files
+        const { shapefileGroups } = groupMultiFileFormats(selectedFiles);
+        const relatedFiles = shapefileGroups.get(shpBaseName);
+
+        if (relatedFiles && relatedFiles.length > 1) {
+          // Bundle into ZIP for preview
+          const zip = new JSZip();
+          for (const file of relatedFiles) {
+            const fileBuffer = await file.arrayBuffer();
+            zip.file(file.name, fileBuffer);
+          }
+          arrayBuffer = await zip.generateAsync({ type: 'arraybuffer' });
+          displayName = shpBaseName + '.shp';
+
+          // Create cache key based on all related files
+          const allFileInfo = relatedFiles.map(f => `${f.name}_${f.size}_${f.lastModified}`).sort().join('|');
+          cacheKey = `${allFileInfo}_${fileFormat}_${finalSourceCrs || 'auto'}`;
+        } else {
+          // Single file, process normally
+          arrayBuffer = await selectedFile.arrayBuffer();
+          cacheKey = `${selectedFile.name}_${selectedFile.size}_${selectedFile.lastModified}_${fileFormat}_${finalSourceCrs || 'auto'}`;
+        }
+      } else if (tabBaseName && fileFormat === 'mapinfo' && !selectedFile.name.toLowerCase().endsWith('.zip')) {
+        // This is a raw MapInfo TAB component - group with related files
+        const { mapinfoTabGroups } = groupMultiFileFormats(selectedFiles);
+        const relatedFiles = mapinfoTabGroups.get(tabBaseName);
+
+        if (relatedFiles && relatedFiles.length > 1) {
+          // Bundle into ZIP for preview
+          const zip = new JSZip();
+          for (const file of relatedFiles) {
+            const fileBuffer = await file.arrayBuffer();
+            zip.file(file.name, fileBuffer);
+          }
+          arrayBuffer = await zip.generateAsync({ type: 'arraybuffer' });
+          displayName = tabBaseName + '.tab';
+
+          // Create cache key based on all related files
+          const allFileInfo = relatedFiles.map(f => `${f.name}_${f.size}_${f.lastModified}`).sort().join('|');
+          cacheKey = `${allFileInfo}_${fileFormat}_${finalSourceCrs || 'auto'}`;
+        } else {
+          // Single file, process normally
+          arrayBuffer = await selectedFile.arrayBuffer();
+          cacheKey = `${selectedFile.name}_${selectedFile.size}_${selectedFile.lastModified}_${fileFormat}_${finalSourceCrs || 'auto'}`;
+        }
+      } else if (mifBaseName && fileFormat === 'mapinfomif') {
+        // This is a MapInfo MIF/MID component - group with related files
+        const { mapinfoMifGroups } = groupMultiFileFormats(selectedFiles);
+        const relatedFiles = mapinfoMifGroups.get(mifBaseName);
+
+        if (relatedFiles && relatedFiles.length > 1) {
+          // Bundle into ZIP for preview (for consistency)
+          const zip = new JSZip();
+          for (const file of relatedFiles) {
+            const fileBuffer = await file.arrayBuffer();
+            zip.file(file.name, fileBuffer);
+          }
+          arrayBuffer = await zip.generateAsync({ type: 'arraybuffer' });
+          displayName = mifBaseName + '.mif';
+
+          // Create cache key based on all related files
+          const allFileInfo = relatedFiles.map(f => `${f.name}_${f.size}_${f.lastModified}`).sort().join('|');
+          cacheKey = `${allFileInfo}_${fileFormat}_${finalSourceCrs || 'auto'}`;
+        } else {
+          // Single file, process normally
+          arrayBuffer = await selectedFile.arrayBuffer();
+          cacheKey = `${selectedFile.name}_${selectedFile.size}_${selectedFile.lastModified}_${fileFormat}_${finalSourceCrs || 'auto'}`;
+        }
+      } else {
+        // Not a multi-file format component or already a ZIP
+        arrayBuffer = await selectedFile.arrayBuffer();
+        cacheKey = `${selectedFile.name}_${selectedFile.size}_${selectedFile.lastModified}_${fileFormat}_${finalSourceCrs || 'auto'}`;
+      }
 
       // Check if we have cached preview data
       if (previewCache.current[cacheKey]) {
-        console.log('✓ Using cached preview data for:', selectedFile.name);
+        console.log('✓ Using cached preview data for:', displayName);
         setPreviewData(previewCache.current[cacheKey]);
         setShowPreview(true);
         setIsLoadingPreview(false);
@@ -551,13 +738,12 @@ function App() {
         return;
       }
 
-      console.log('⟳ Loading preview data for:', selectedFile.name);
-      const arrayBuffer = await selectedFile.arrayBuffer();
+      console.log('⟳ Loading preview data for:', displayName);
 
       // Call worker to extract metadata (off main thread)
       let jsonString = await getVectorInfoWithWorker(
         arrayBuffer,
-        selectedFile.name,
+        displayName,
         fileFormat,
         finalSourceCrs,
       );
@@ -839,39 +1025,159 @@ function App() {
       const errors = [];
       const successFiles = [];
 
-      // Process each file
-      for (let fileIndex = 0; fileIndex < selectedFiles.length; fileIndex++) {
-        const selectedFile = selectedFiles[fileIndex];
+      // Group multi-file formats together
+      const { shapefileGroups, mapinfoTabGroups, mapinfoMifGroups, otherFiles } = groupMultiFileFormats(selectedFiles);
+
+      // Create a list of processable items (either single files or grouped multi-file formats)
+      const processableItems = [];
+
+      // Add grouped shapefiles
+      for (const [baseName, files] of shapefileGroups.entries()) {
+        // Check if we have a .shp file (required)
+        const hasShp = files.some(f => f.name.toLowerCase().endsWith('.shp'));
+        if (hasShp) {
+          processableItems.push({
+            type: 'shapefile-group',
+            baseName,
+            files,
+            displayName: baseName + '.shp',
+            format: 'shapefile'
+          });
+        } else {
+          // Missing .shp file - treat individually
+          files.forEach(f => processableItems.push({
+            type: 'single',
+            file: f,
+            displayName: f.name
+          }));
+        }
+      }
+
+      // Add grouped MapInfo TAB files
+      for (const [baseName, files] of mapinfoTabGroups.entries()) {
+        // Check if we have a .tab file (required)
+        const hasTab = files.some(f => f.name.toLowerCase().endsWith('.tab'));
+        if (hasTab) {
+          processableItems.push({
+            type: 'mapinfo-tab-group',
+            baseName,
+            files,
+            displayName: baseName + '.tab',
+            format: 'mapinfo'
+          });
+        } else {
+          // Missing .tab file - treat individually
+          files.forEach(f => processableItems.push({
+            type: 'single',
+            file: f,
+            displayName: f.name
+          }));
+        }
+      }
+
+      // Add grouped MapInfo MIF/MID files
+      for (const [baseName, files] of mapinfoMifGroups.entries()) {
+        // Check if we have a .mif file (required)
+        const hasMif = files.some(f => f.name.toLowerCase().endsWith('.mif'));
+        if (hasMif) {
+          processableItems.push({
+            type: 'mapinfo-mif-group',
+            baseName,
+            files,
+            displayName: baseName + '.mif',
+            format: 'mapinfomif'
+          });
+        } else {
+          // Missing .mif file - treat individually
+          files.forEach(f => processableItems.push({
+            type: 'single',
+            file: f,
+            displayName: f.name
+          }));
+        }
+      }
+
+      // Add other files
+      otherFiles.forEach(f => processableItems.push({
+        type: 'single',
+        file: f,
+        displayName: f.name
+      }));
+
+      // Process each item
+      for (let itemIndex = 0; itemIndex < processableItems.length; itemIndex++) {
+        const item = processableItems[itemIndex];
 
         try {
           let inputArray;
-          let actualInputFormat =
-            detectFormatFromFile(selectedFile.name) || inputFormat;
+          let actualInputFormat;
+          let displayName = item.displayName;
 
-          // Handle ZIP files for shapefiles
-          if (
-            selectedFile.name.endsWith(".zip") &&
-            actualInputFormat === "shapefile"
-          ) {
-            // Extract the shapefile from ZIP
-            const arrayBuffer = await selectedFile.arrayBuffer();
-            const zip = await JSZip.loadAsync(arrayBuffer);
+          if (item.type === 'shapefile-group') {
+            // Bundle shapefile components into a ZIP
+            const zip = new JSZip();
 
-            // Find the .shp file in the ZIP
-            const shpFile = Object.keys(zip.files).find((name) =>
-              name.endsWith(".shp"),
-            );
-            if (!shpFile) {
-              throw new Error("No .shp file found in the ZIP archive");
+            for (const file of item.files) {
+              const arrayBuffer = await file.arrayBuffer();
+              zip.file(file.name, arrayBuffer);
             }
 
-            // For now, we need to pass the whole ZIP to GDAL
-            // GDAL can read from /vsizip/ paths
-            inputArray = new Uint8Array(arrayBuffer);
+            const zipBlob = await zip.generateAsync({ type: 'arraybuffer' });
+            inputArray = new Uint8Array(zipBlob);
+            actualInputFormat = 'shapefile';
+          } else if (item.type === 'mapinfo-tab-group') {
+            // Bundle MapInfo TAB components into a ZIP
+            const zip = new JSZip();
+
+            for (const file of item.files) {
+              const arrayBuffer = await file.arrayBuffer();
+              zip.file(file.name, arrayBuffer);
+            }
+
+            const zipBlob = await zip.generateAsync({ type: 'arraybuffer' });
+            inputArray = new Uint8Array(zipBlob);
+            actualInputFormat = 'mapinfo';
+          } else if (item.type === 'mapinfo-mif-group') {
+            // Bundle MapInfo MIF/MID components into a ZIP (for consistency)
+            const zip = new JSZip();
+
+            for (const file of item.files) {
+              const arrayBuffer = await file.arrayBuffer();
+              zip.file(file.name, arrayBuffer);
+            }
+
+            const zipBlob = await zip.generateAsync({ type: 'arraybuffer' });
+            inputArray = new Uint8Array(zipBlob);
+            actualInputFormat = 'mapinfomif';
           } else {
-            // Read the file as ArrayBuffer
-            const arrayBuffer = await selectedFile.arrayBuffer();
-            inputArray = new Uint8Array(arrayBuffer);
+            const selectedFile = item.file;
+            actualInputFormat = detectFormatFromFile(selectedFile.name) || inputFormat;
+
+            // Handle ZIP files for shapefiles
+            if (
+              selectedFile.name.endsWith(".zip") &&
+              actualInputFormat === "shapefile"
+            ) {
+              // Extract the shapefile from ZIP
+              const arrayBuffer = await selectedFile.arrayBuffer();
+              const zip = await JSZip.loadAsync(arrayBuffer);
+
+              // Find the .shp file in the ZIP
+              const shpFile = Object.keys(zip.files).find((name) =>
+                name.endsWith(".shp"),
+              );
+              if (!shpFile) {
+                throw new Error("No .shp file found in the ZIP archive");
+              }
+
+              // For now, we need to pass the whole ZIP to GDAL
+              // GDAL can read from /vsizip/ paths
+              inputArray = new Uint8Array(arrayBuffer);
+            } else {
+              // Read the file as ArrayBuffer
+              const arrayBuffer = await selectedFile.arrayBuffer();
+              inputArray = new Uint8Array(arrayBuffer);
+            }
           }
 
           // Get final CRS values (use custom if 'custom' is selected)
@@ -883,7 +1189,7 @@ function App() {
           // Convert using Web Worker (off main thread)
           const outputArray = await convertFileWithWorker(
             inputArray.buffer,
-            selectedFile.name,
+            displayName,
             actualInputFormat,
             outputFormat,
             {
@@ -905,7 +1211,7 @@ function App() {
           );
 
           // Create blob for download
-          const baseName = selectedFile.name.replace(/\.[^/.]+$/, "");
+          const baseName = displayName.replace(/\.[^/.]+$/, "");
           const outputBlob = new Blob([outputArray], {
             type: "application/octet-stream",
           });
@@ -923,14 +1229,14 @@ function App() {
           URL.revokeObjectURL(url);
 
           successCount++;
-          successFiles.push(selectedFile.name);
+          successFiles.push(displayName);
         } catch (error) {
           failCount++;
           console.error(
-            `Conversion error for ${selectedFile.name}:`,
+            `Conversion error for ${displayName}:`,
             error,
           );
-          errors.push(`${selectedFile.name}: ${error.message}`);
+          errors.push(`${displayName}: ${error.message}`);
         }
       }
 

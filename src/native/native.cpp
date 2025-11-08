@@ -105,6 +105,8 @@ static std::string getDriverNameFromFormat(const std::string& format) {
     if (f == "kml")         return "KML";
     if (f == "gpx")         return "GPX";
     if (f == "gml")         return "GML";
+    if (f == "mapinfo")     return "MapInfo File";
+    if (f == "mapinfomif")  return "MapInfo File";
     if (f == "flatgeobuf")  return "FlatGeobuf";
     if (f == "csv")         return "CSV";
     if (f == "pmtiles")     return "PMTiles";
@@ -155,6 +157,8 @@ static std::string getExtensionFromFormat(const std::string& format) {
     if (f == "kml")         return ".kml";
     if (f == "gpx")         return ".gpx";
     if (f == "gml")         return ".gml";
+    if (f == "mapinfo")     return ".zip";  // MapInfo TAB as ZIP
+    if (f == "mapinfomif")  return ".mif";  // MapInfo MIF/MID
     if (f == "flatgeobuf")  return ".fgb";
     if (f == "csv")         return ".csv";
     if (f == "pmtiles")     return ".pmtiles";
@@ -205,6 +209,36 @@ static std::string pickShpInsideZip(const std::string& zipVsi) {
     }
     CSLDestroy(files);
     return shpPath;
+}
+
+// find a .kml file inside /vsizip//vsimem/xxx.zip (first match)
+static std::string pickKmlInsideZip(const std::string& zipVsi) {
+    char** files = VSIReadDirRecursive(zipVsi.c_str());
+    std::string kmlPath;
+    for (int i = 0; files && files[i]; i++) {
+        std::string f = files[i];
+        if (f.size() > 4 && toLower(f.substr(f.size()-4)) == ".kml") {
+            kmlPath = zipVsi + "/" + f; // e.g. /vsizip//vsimem/input.zip/doc.kml
+            break;
+        }
+    }
+    CSLDestroy(files);
+    return kmlPath;
+}
+
+// find a .tab file inside /vsizip//vsimem/xxx.zip (first match)
+static std::string pickTabInsideZip(const std::string& zipVsi) {
+    char** files = VSIReadDirRecursive(zipVsi.c_str());
+    std::string tabPath;
+    for (int i = 0; files && files[i]; i++) {
+        std::string f = files[i];
+        if (f.size() > 4 && toLower(f.substr(f.size()-4)) == ".tab") {
+            tabPath = zipVsi + "/" + f; // e.g. /vsizip//vsimem/input.zip/data.tab
+            break;
+        }
+    }
+    CSLDestroy(files);
+    return tabPath;
 }
 
 // find a .gdb directory inside /vsizip//vsimem/xxx.zip (first match)
@@ -509,6 +543,50 @@ std::string Native::getVectorInfo(
             const std::string zipVsi = "/vsizip/" + zipPath;
             inputPath = pickShpInsideZip(zipVsi);
             if (inputPath.empty()) throw std::runtime_error("No .shp found in input ZIP");
+        } else if (inFmt == "kml") {
+            // Check if input is a KMZ (zipped KML) by looking for ZIP signature
+            bool isKmz = false;
+            if (inputData.size() >= 4) {
+                // Check for ZIP magic number (PK\x03\x04 or PK\x05\x06)
+                isKmz = (inputData[0] == 'P' && inputData[1] == 'K' &&
+                        (inputData[2] == 0x03 || inputData[2] == 0x05));
+            }
+
+            if (isKmz) {
+                const std::string zipPath = "/vsimem/preview_input.kmz";
+                fpIn = VSIFileFromMemBuffer(zipPath.c_str(),
+                                            const_cast<GByte*>(inputData.data()),
+                                            static_cast<vsi_l_offset>(inputData.size()),
+                                            FALSE);
+                if (!fpIn) throw std::runtime_error("Failed to create input KMZ file");
+                VSIFCloseL(fpIn); fpIn = nullptr;
+
+                const std::string zipVsi = "/vsizip/" + zipPath;
+                inputPath = pickKmlInsideZip(zipVsi);
+                if (inputPath.empty()) throw std::runtime_error("No .kml found in KMZ archive");
+            } else {
+                // Regular KML file
+                inputPath = "/vsimem/preview_input.kml";
+                fpIn = VSIFileFromMemBuffer(inputPath.c_str(),
+                                            const_cast<GByte*>(inputData.data()),
+                                            static_cast<vsi_l_offset>(inputData.size()),
+                                            FALSE);
+                if (!fpIn) throw std::runtime_error("Failed to create input KML file");
+                VSIFCloseL(fpIn); fpIn = nullptr;
+            }
+        } else if (inFmt == "mapinfo") {
+            // MapInfo TAB format - handle as ZIP
+            const std::string zipPath = "/vsimem/preview_input.zip";
+            fpIn = VSIFileFromMemBuffer(zipPath.c_str(),
+                                        const_cast<GByte*>(inputData.data()),
+                                        static_cast<vsi_l_offset>(inputData.size()),
+                                        FALSE);
+            if (!fpIn) throw std::runtime_error("Failed to create input ZIP file");
+            VSIFCloseL(fpIn); fpIn = nullptr;
+
+            const std::string zipVsi = "/vsizip/" + zipPath;
+            inputPath = pickTabInsideZip(zipVsi);
+            if (inputPath.empty()) throw std::runtime_error("No .tab found in input ZIP");
         } else if (inFmt == "openfilegdb") {
             const std::string zipPath = "/vsimem/preview_input.zip";
             fpIn = VSIFileFromMemBuffer(zipPath.c_str(),
@@ -821,6 +899,50 @@ std::vector<uint8_t> Native::convertVector(
             const std::string zipVsi = "/vsizip/" + zipPath; // note: /vsizip//vsimem/input.zip also works
             inputPath = pickShpInsideZip(zipVsi);
             if (inputPath.empty()) throw std::runtime_error("No .shp found in input ZIP");
+        } else if (inFmt == "kml") {
+            // Check if input is a KMZ (zipped KML) by looking for ZIP signature
+            bool isKmz = false;
+            if (inputData.size() >= 4) {
+                // Check for ZIP magic number (PK\x03\x04 or PK\x05\x06)
+                isKmz = (inputData[0] == 'P' && inputData[1] == 'K' &&
+                        (inputData[2] == 0x03 || inputData[2] == 0x05));
+            }
+
+            if (isKmz) {
+                const std::string zipPath = "/vsimem/input.kmz";
+                fpIn = VSIFileFromMemBuffer(zipPath.c_str(),
+                                            const_cast<GByte*>(inputData.data()),
+                                            static_cast<vsi_l_offset>(inputData.size()),
+                                            FALSE);
+                if (!fpIn) throw std::runtime_error("Failed to create input KMZ file");
+                VSIFCloseL(fpIn); fpIn = nullptr;
+
+                const std::string zipVsi = "/vsizip/" + zipPath;
+                inputPath = pickKmlInsideZip(zipVsi);
+                if (inputPath.empty()) throw std::runtime_error("No .kml found in KMZ archive");
+            } else {
+                // Regular KML file
+                inputPath = "/vsimem/input.kml";
+                fpIn = VSIFileFromMemBuffer(inputPath.c_str(),
+                                            const_cast<GByte*>(inputData.data()),
+                                            static_cast<vsi_l_offset>(inputData.size()),
+                                            FALSE);
+                if (!fpIn) throw std::runtime_error("Failed to create input KML file");
+                VSIFCloseL(fpIn); fpIn = nullptr;
+            }
+        } else if (inFmt == "mapinfo") {
+            // MapInfo TAB format - handle as ZIP
+            const std::string zipPath = "/vsimem/input.zip";
+            fpIn = VSIFileFromMemBuffer(zipPath.c_str(),
+                                        const_cast<GByte*>(inputData.data()),
+                                        static_cast<vsi_l_offset>(inputData.size()),
+                                        FALSE);
+            if (!fpIn) throw std::runtime_error("Failed to create input ZIP file");
+            VSIFCloseL(fpIn); fpIn = nullptr;
+
+            const std::string zipVsi = "/vsizip/" + zipPath;
+            inputPath = pickTabInsideZip(zipVsi);
+            if (inputPath.empty()) throw std::runtime_error("No .tab found in input ZIP");
         } else if (inFmt == "openfilegdb") {
             const std::string zipPath = "/vsimem/input.zip";
             fpIn = VSIFileFromMemBuffer(zipPath.c_str(),
@@ -1028,6 +1150,98 @@ std::vector<uint8_t> Native::convertVector(
 
             // Cleanup
             VSIRmdirRecursive(gdbDir.c_str());
+            VSIUnlink(zipPath.c_str());
+        }
+        else if (driver == "MapInfo File") {
+            // Special case for MapInfo TAB: write to directory, then ZIP it
+            const std::string baseDir = "/vsimem/mapinfo_output";
+            const std::string baseName = layerName.empty() ? "output" : layerName;
+            const std::string outPath = baseDir + "/" + baseName + ".tab";
+
+            std::vector<std::string> args = {
+                "-f", "MapInfo File",
+                "-dim", keepZ ? "XYZ" : "XY"
+            };
+
+            // Explode collections
+            if (explodeCollections) {
+                args.push_back("-explodecollections");
+            }
+
+            // Global options
+            if (skipFailures) args.push_back("-skipfailures");
+            if (makeValid) args.push_back("-makevalid");
+            if (preserveFid) args.push_back("-preserve_fid");
+
+            // Simplify geometry
+            if (simplifyTolerance > 0) {
+                args.insert(args.end(), {"-simplify", std::to_string(simplifyTolerance)});
+            }
+
+            // Optional layer rename
+            if (!layerName.empty()) {
+                args.insert(args.end(), {"-nln", layerName});
+            }
+
+            // Optional geometry filter
+            const std::string where = whereFromFilter(geometryTypeFilter);
+            if (!where.empty()) {
+                args.insert(args.end(), {"-where", where});
+            }
+
+            // User-provided WHERE clause
+            if (!whereClause.empty()) {
+                args.insert(args.end(), {"-where", whereClause});
+            }
+
+            // Field selection
+            if (!selectFields.empty()) {
+                args.insert(args.end(), {"-select", selectFields});
+            }
+
+            // CRS behavior
+            pushCrsArgs(args, poSrcDS, sourceCrs, targetCrs);
+
+            GDALDataset* dst = runVectorTranslate(poSrcDS, outPath, args);
+            if (!dst) {
+                GDALClose(poSrcDS);
+                throw std::runtime_error("Vector translate failed");
+            }
+            GDALClose(dst);
+
+            // Collect all MapInfo files (.tab, .dat, .map, .id, .ind) and ZIP them
+            const std::string zipPath = "/vsimem/mapinfo_output.zip";
+            char** fileList = VSIReadDir(baseDir.c_str());
+            for (int i = 0; fileList && fileList[i]; i++) {
+                const std::string filename = fileList[i];
+                if (filename == "." || filename == "..") continue;
+
+                const std::string srcPath = baseDir + "/" + filename;
+                const std::string dstPath = std::string("/vsizip/") + zipPath + "/" + filename;
+
+                // Copy file to ZIP
+                vsi_l_offset nBytes = 0;
+                GByte* fileData = VSIGetMemFileBuffer(srcPath.c_str(), &nBytes, FALSE);
+                if (fileData && nBytes > 0) {
+                    VSILFILE* fpOut = VSIFOpenL(dstPath.c_str(), "wb");
+                    if (fpOut) {
+                        VSIFWriteL(fileData, 1, nBytes, fpOut);
+                        VSIFCloseL(fpOut);
+                    }
+                }
+                VSIUnlink(srcPath.c_str());
+            }
+            CSLDestroy(fileList);
+            VSIRmdirRecursive(baseDir.c_str());
+
+            // Collect the resulting ZIP bytes
+            vsi_l_offset zipLen = 0;
+            GByte* zipBuf = VSIGetMemFileBuffer(zipPath.c_str(), &zipLen, FALSE);
+            if (zipBuf && zipLen > 0) {
+                result.assign(zipBuf, zipBuf + zipLen);
+            } else {
+                throw std::runtime_error("Failed to create MapInfo ZIP");
+            }
             VSIUnlink(zipPath.c_str());
         }
         else {

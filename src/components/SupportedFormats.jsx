@@ -23,9 +23,9 @@ const SUPPORTED_FORMATS = [
     value: 'shapefile',
     label: 'Shapefile',
     downloadExt: '.zip',
-    extensions: ['shp.zip', 'zip', 'shp'],
+    extensions: ['shp.zip', 'zip', 'shp', 'shx', 'dbf', 'prj', 'cpg', 'sbn', 'sbx', 'fbn', 'fbx', 'ain', 'aih', 'ixs', 'mxs', 'atx', 'shp.xml', 'qix'],
     capabilities: CAPABILITIES.inputOutput,
-    description: 'Industry-standard format developed by Esri. Consists of multiple files (.shp, .shx, .dbf, .prj) packaged as ZIP.',
+    description: 'Industry-standard format developed by Esri. Consists of multiple files (.shp, .shx, .dbf, .prj) packaged as ZIP or uploaded separately.',
     useCase: 'Desktop GIS, legacy systems, ArcGIS'
   },
   {
@@ -41,9 +41,9 @@ const SUPPORTED_FORMATS = [
     value: 'kml',
     label: 'KML',
     downloadExt: '.kml',
-    extensions: ['kml'],
+    extensions: ['kml', 'kmz'],
     capabilities: CAPABILITIES.inputOutput,
-    description: 'XML-based format created by Google for Earth and Maps. Supports styling and 3D visualization.',
+    description: 'XML-based format created by Google for Earth and Maps. Supports styling and 3D visualization. KMZ is compressed KML.',
     useCase: 'Google Earth, Google Maps, visualization'
   },
   {
@@ -63,6 +63,24 @@ const SUPPORTED_FORMATS = [
     capabilities: CAPABILITIES.inputOutput,
     description: 'Geography Markup Language, an XML grammar for geographic features. OGC standard for data exchange.',
     useCase: 'Enterprise GIS, standards compliance'
+  },
+  {
+    value: 'mapinfo',
+    label: 'MapInfo TAB',
+    downloadExt: '.zip',
+    extensions: ['tab', 'dat', 'map', 'id', 'ind'],
+    capabilities: CAPABILITIES.inputOutput,
+    description: 'MapInfo native binary format. Consists of multiple files (.tab, .dat, .map, .id, .ind) that can be uploaded separately or as ZIP.',
+    useCase: 'MapInfo Professional, legacy GIS data'
+  },
+  {
+    value: 'mapinfomif',
+    label: 'MapInfo MIF/MID',
+    downloadExt: '.mif',
+    extensions: ['mif', 'mid'],
+    capabilities: CAPABILITIES.inputOutput,
+    description: 'MapInfo interchange format. Text-based with .mif (geometry) and .mid (attributes) files.',
+    useCase: 'MapInfo data exchange, human-readable format'
   },
   {
     value: 'flatgeobuf',
