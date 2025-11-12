@@ -14,7 +14,7 @@ export function ChangelogCard() {
         <p className="font-medium text-emerald-100 mb-1">Latest update</p>
         <p className="text-emerald-200/90 leading-relaxed">
           Main processing now runs in a dedicated web worker, enabling
-          conversions up to 100 MB per file. Added support for non-zipped shp
+          conversions up to 200 MB per file. Added support for non-zipped shp
           input.
         </p>
       </div>

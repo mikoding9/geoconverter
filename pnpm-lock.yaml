@@ -14,6 +14,9 @@ importers:
       '@cpp.js/plugin-vite':
         specifier: ^1.0.2
         version: 1.0.2
+      epsg-index:
+        specifier: ^2.0.0
+        version: 2.0.0
       jszip:
         specifier: ^3.10.1
         version: 3.10.1
@@ -1146,6 +1149,10 @@ packages:
   enhanced-resolve@5.18.3:
     resolution: {integrity: sha512-d4lC8xfavMeBjzGr2vECC3fsGXziXZQyJxD868h2M/mBI3PwAuODxAkLkq5HYuvrPYcUtiLzsTo8U3PgX3Ocww==}
     engines: {node: '>=10.13.0'}
+
+  epsg-index@2.0.0:
+    resolution: {integrity: sha512-JFRqtXMmxEO/BWbXZuLNJuWS44vbwDPQkfycnISnfm/I8/OLlAqwbYRImgAV9ulr63p/hyW2YIFT9jizHeDzvQ==}
+    engines: {node: '>=18'}
 
   es-abstract@1.24.0:
     resolution: {integrity: sha512-WSzPgsdLtTcQwm4CROfS5ju2Wa1QQcVeT37jFjYzdFz1r9ahadC8B8/a4qxJxM+09F18iumCdRmlr96ZYkQvEg==}
@@ -3428,6 +3435,8 @@ snapshots:
     dependencies:
       graceful-fs: 4.2.11
       tapable: 2.3.0
+
+  epsg-index@2.0.0: {}
 
   es-abstract@1.24.0:
     dependencies:

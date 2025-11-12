@@ -22,6 +22,7 @@ import { motion } from "motion/react";
 import clsx from "clsx";
 import JSZip from "jszip";
 import proj4 from "proj4";
+import epsg from "epsg-index/all.json" with { type: "json" };
 import { initCppJs, Native } from "@/native/native.h";
 import { Text } from "@/components/text";
 import {
@@ -69,10 +70,6 @@ const COMMON_CRS = [
 ];
 
 const EPSG_REGEX = /^epsg:(\d{1,6})$/i;
-const PROJ_ENDPOINTS = [
-  (code) => `https://spatialreference.org/ref/epsg/${code}/proj4.txt`,
-  (code) => `https://epsg.io/${code}.proj4`,
-];
 
 // Geometry type filter options
 const GEOMETRY_TYPE_FILTERS = [
@@ -556,27 +553,20 @@ function App() {
 
     if (epsgMatch) {
       const epsgCode = epsgMatch[1];
-      // Try to get PROJ4 definition from epsg.io
-      try {
-        const response = await fetch(`https://epsg.io/${epsgCode}.proj4`, {
-          mode: "cors",
-        });
-        if (response.ok) {
-          proj4Def = await response.text();
-          console.log(
-            `Fetched PROJ4 definition for EPSG:${epsgCode}:`,
-            proj4Def,
-          );
-        }
-      } catch (error) {
-        console.warn(
-          `Failed to fetch PROJ4 definition for EPSG:${epsgCode}`,
-          error,
-        );
-      }
+      // Use epsg-index for offline EPSG code lookup
+      const epsgEntry = epsg[epsgCode];
 
-      // Fallback: use EPSG code directly (proj4 has some built-in definitions)
-      if (!proj4Def) {
+      if (epsgEntry && epsgEntry.proj4) {
+        proj4Def = epsgEntry.proj4;
+        console.log(
+          `✓ Resolved EPSG:${epsgCode} from offline database:`,
+          proj4Def,
+        );
+      } else {
+        // Fallback: use EPSG code directly (proj4 has some built-in definitions)
+        console.warn(
+          `EPSG:${epsgCode} not found in offline database, using as-is`,
+        );
         proj4Def = `EPSG:${epsgCode}`;
       }
     } else {
@@ -883,34 +873,15 @@ function App() {
       const fromCache = Boolean(projString);
 
       if (!projString) {
-        let lastError = null;
+        // Use epsg-index for offline EPSG code lookup
+        const epsgEntry = epsg[code];
 
-        for (const buildUrl of PROJ_ENDPOINTS) {
-          const url = buildUrl(code);
-          try {
-            const response = await fetch(url, { mode: "cors" });
-            if (!response.ok) {
-              lastError = new Error(`HTTP ${response.status}`);
-              continue;
-            }
-            const text = (await response.text()).trim();
-            if (!text || !text.startsWith("+proj")) {
-              lastError = new Error("Unexpected response format");
-              continue;
-            }
-            projString = text;
-            break;
-          } catch (error) {
-            lastError =
-              error instanceof Error ? error : new Error(String(error));
-          }
+        if (epsgEntry && epsgEntry.proj4) {
+          projString = epsgEntry.proj4;
+          projLookupCache.current[cacheKey] = projString;
+        } else {
+          throw new Error(`EPSG:${code} not found in offline database`);
         }
-
-        if (!projString) {
-          throw lastError || new Error("Unable to fetch PROJ definition");
-        }
-
-        projLookupCache.current[cacheKey] = projString;
       }
 
       setValue(projString);
@@ -918,7 +889,7 @@ function App() {
       if (!fromCache) {
         setToast({
           isOpen: true,
-          message: `Resolved EPSG:${code} to PROJ string.`,
+          message: `✓ Resolved EPSG:${code} to PROJ string (offline).`,
           type: "success",
         });
       }

@@ -291,8 +291,7 @@ export function HelpDialog({ isOpen, onClose }) {
                           <ul className="text-xs text-zinc-400 space-y-1">
                             <li>• Initial load requires internet to download the WebAssembly bundle.</li>
                             <li>• Refreshing the page while offline works as long as the assets remain in your browser cache.</li>
-                            <li>• Feedback form and release notes still need a connection.</li>
-                            <li>• EPSG auto-translation pulls definitions from the web—when offline, paste the full PROJ string instead of an EPSG code.</li>
+                            <li>• Feedback form still need a connection.</li>
                           </ul>
                           <p className="text-xs text-zinc-400">
                             💡 Add GeoConverter as a progressive web app (PWA) to pin it offline on supported browsers.
