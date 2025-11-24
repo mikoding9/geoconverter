@@ -1078,11 +1078,11 @@ function App() {
       // Process each item
       for (let itemIndex = 0; itemIndex < processableItems.length; itemIndex++) {
         const item = processableItems[itemIndex];
+        const displayName = item.displayName || (item.file ? item.file.name : 'unknown');
 
         try {
           let inputArray;
           let actualInputFormat;
-          let displayName = item.displayName;
 
           if (item.type === 'shapefile-group') {
             // Bundle shapefile components into a ZIP
@@ -1186,7 +1186,14 @@ function App() {
           const outputBlob = new Blob([outputArray], {
             type: "application/octet-stream",
           });
-          const outputExt = FORMAT_LOOKUP[outputFormat]?.downloadExt || ".dat";
+
+          // Check if output is a ZIP (multi-file output from GPX)
+          // ZIP files start with "PK" (0x50 0x4B)
+          const isZip = outputArray.length >= 2 &&
+                        outputArray[0] === 0x50 &&
+                        outputArray[1] === 0x4B;
+
+          const outputExt = isZip ? ".zip" : (FORMAT_LOOKUP[outputFormat]?.downloadExt || ".dat");
 
           // Trigger download
           const url = URL.createObjectURL(outputBlob);

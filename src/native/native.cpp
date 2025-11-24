@@ -1253,72 +1253,158 @@ std::vector<uint8_t> Native::convertVector(
             VSIUnlink(zipPath.c_str());
         }
         else {
-            // Non-SHP/GDB: single output file in /vsimem
-            const std::string outPath = "/vsimem/output" + outExt;
+            // Non-SHP/GDB formats
+            // For GPX input, process multiple layers and create a ZIP with separate files
+            if (inFmt == "gpx" && layerName.empty() && geometryTypeFilter.empty()) {
+                const std::string baseDir = "/vsimem/output_files";
 
-            std::vector<std::string> args = {
-                "-f", driver,
-                "-dim", keepZ ? "XYZ" : "XY"
-            };
+                const int nL = poSrcDS->GetLayerCount();
+                bool hasOutput = false;
 
-            // Explode collections
-            if (explodeCollections) {
-                args.push_back("-explodecollections");
-            }
+                for (int i = 0; i < nL; i++) {
+                    OGRLayer* L = poSrcDS->GetLayer(i);
+                    if (!L) continue;
+                    const std::string srcLayerName = L->GetName();
 
-            // Global options
-            if (skipFailures) args.push_back("-skipfailures");
-            if (makeValid) args.push_back("-makevalid");
-            if (preserveFid) args.push_back("-preserve_fid");
+                    // Skip GPX auxiliary layers
+                    std::string lowerLayerName = toLower(srcLayerName);
+                    if (lowerLayerName == "track_points" || lowerLayerName == "route_points") {
+                        continue;
+                    }
 
-            // Simplify geometry
-            if (simplifyTolerance > 0) {
-                args.insert(args.end(), {"-simplify", std::to_string(simplifyTolerance)});
-            }
+                    // Check if layer has features
+                    GIntBig featureCount = L->GetFeatureCount();
+                    if (featureCount <= 0) continue;
 
-            // optional per-format LCOs
-            pushDriverLCO(args, driver, geojsonPrecision, csvGeometryMode);
-            // CRS behavior
-            pushCrsArgs(args, poSrcDS, sourceCrs, targetCrs);
+                    const std::string outPath = baseDir + "/" + srcLayerName + outExt;
 
-            // Optional layer rename (mostly relevant for single-layer formats)
-            if (!layerName.empty()) {
-                args.insert(args.end(), {"-nln", layerName});
-            }
+                    std::vector<std::string> args = {
+                        "-f", driver,
+                        "-dim", keepZ ? "XYZ" : "XY",
+                        "-nln", srcLayerName,
+                        srcLayerName  // Specify layer to convert
+                    };
 
-            // Optional geometry filter (single family)
-            const std::string where = whereFromFilter(geometryTypeFilter);
-            if (!where.empty()) {
-                args.insert(args.end(), {"-where", where});
-            }
+                    if (explodeCollections) args.push_back("-explodecollections");
+                    if (skipFailures) args.push_back("-skipfailures");
+                    if (makeValid) args.push_back("-makevalid");
+                    if (preserveFid) args.push_back("-preserve_fid");
+                    if (simplifyTolerance > 0) {
+                        args.insert(args.end(), {"-simplify", std::to_string(simplifyTolerance)});
+                    }
+                    if (!selectFields.empty()) {
+                        args.insert(args.end(), {"-select", selectFields});
+                    }
 
-            // User-provided WHERE clause (more flexible than geometry filter)
-            if (!whereClause.empty()) {
-                args.insert(args.end(), {"-where", whereClause});
-            }
+                    pushDriverLCO(args, driver, geojsonPrecision, csvGeometryMode);
+                    pushCrsArgs(args, poSrcDS, sourceCrs, targetCrs);
 
-            // Field selection
-            if (!selectFields.empty()) {
-                args.insert(args.end(), {"-select", selectFields});
-            }
+                    GDALDataset* dst = runVectorTranslate(poSrcDS, outPath, args);
+                    if (dst) {
+                        GDALClose(dst);
+                        hasOutput = true;
+                    }
+                }
 
-            GDALDataset* dst = runVectorTranslate(poSrcDS, outPath, args);
-            if (!dst) {
-                GDALClose(poSrcDS);
-                throw std::runtime_error("Vector translate failed");
-            }
-            GDALClose(dst);
+                if (!hasOutput) {
+                    GDALClose(poSrcDS);
+                    throw std::runtime_error("No valid layers found in GPX file");
+                }
 
-            // read output file
-            vsi_l_offset n = 0;
-            GByte* buf = VSIGetMemFileBuffer(outPath.c_str(), &n, FALSE);
-            if (!buf || n == 0) {
-                GDALClose(poSrcDS);
+                // Create ZIP with all output files
+                const std::string zipPath = "/vsimem/output.zip";
+                char** fileList = VSIReadDir(baseDir.c_str());
+                for (int i = 0; fileList && fileList[i]; i++) {
+                    const std::string filename = fileList[i];
+                    if (filename == "." || filename == "..") continue;
+
+                    const std::string srcPath = baseDir + "/" + filename;
+                    const std::string dstPath = "/vsizip/" + zipPath + "/" + filename;
+
+                    vsi_l_offset nBytes = 0;
+                    GByte* fileData = VSIGetMemFileBuffer(srcPath.c_str(), &nBytes, FALSE);
+                    if (fileData && nBytes > 0) {
+                        VSILFILE* fpOut = VSIFOpenL(dstPath.c_str(), "wb");
+                        if (fpOut) {
+                            VSIFWriteL(fileData, 1, nBytes, fpOut);
+                            VSIFCloseL(fpOut);
+                        }
+                    }
+                    VSIUnlink(srcPath.c_str());
+                }
+                CSLDestroy(fileList);
+                VSIRmdirRecursive(baseDir.c_str());
+
+                // Read ZIP into result
+                vsi_l_offset zipLen = 0;
+                GByte* zipBuf = VSIGetMemFileBuffer(zipPath.c_str(), &zipLen, FALSE);
+                if (zipBuf && zipLen > 0) {
+                    result.assign(zipBuf, zipBuf + zipLen);
+                } else {
+                    throw std::runtime_error("Failed to create output ZIP");
+                }
+                VSIUnlink(zipPath.c_str());
+
+            } else {
+                // Single output file (non-GPX or user specified layer/filter)
+                const std::string outPath = "/vsimem/output" + outExt;
+
+                std::vector<std::string> args = {
+                    "-f", driver,
+                    "-dim", keepZ ? "XYZ" : "XY"
+                };
+
+                if (explodeCollections) args.push_back("-explodecollections");
+                if (skipFailures) args.push_back("-skipfailures");
+                if (makeValid) args.push_back("-makevalid");
+                if (preserveFid) args.push_back("-preserve_fid");
+                if (simplifyTolerance > 0) {
+                    args.insert(args.end(), {"-simplify", std::to_string(simplifyTolerance)});
+                }
+
+                pushDriverLCO(args, driver, geojsonPrecision, csvGeometryMode);
+                pushCrsArgs(args, poSrcDS, sourceCrs, targetCrs);
+
+                if (!layerName.empty()) {
+                    args.insert(args.end(), {"-nln", layerName});
+                }
+
+                const std::string where = whereFromFilter(geometryTypeFilter);
+                if (!where.empty()) {
+                    args.insert(args.end(), {"-where", where});
+                }
+
+                if (!whereClause.empty()) {
+                    args.insert(args.end(), {"-where", whereClause});
+                }
+
+                if (!selectFields.empty()) {
+                    args.insert(args.end(), {"-select", selectFields});
+                }
+
+                // For GPX, specify layer (default to 'tracks')
+                if (inFmt == "gpx") {
+                    std::string gpxLayer = layerName.empty() ? "tracks" : layerName;
+                    args.push_back(gpxLayer);
+                }
+
+                GDALDataset* dst = runVectorTranslate(poSrcDS, outPath, args);
+                if (!dst) {
+                    GDALClose(poSrcDS);
+                    throw std::runtime_error("Vector translate failed");
+                }
+                GDALClose(dst);
+
+                vsi_l_offset n = 0;
+                GByte* buf = VSIGetMemFileBuffer(outPath.c_str(), &n, FALSE);
+                if (!buf || n == 0) {
+                    GDALClose(poSrcDS);
+                    VSIUnlink(outPath.c_str());
+                    throw std::runtime_error("Failed to read output data");
+                }
+                result.assign(buf, buf + n);
                 VSIUnlink(outPath.c_str());
-                throw std::runtime_error("Failed to read output data");
             }
-            result.assign(buf, buf + n);
-            VSIUnlink(outPath.c_str());
         }
 
         GDALClose(poSrcDS);
