@@ -378,11 +378,11 @@ static void pushDriverLCO(std::vector<std::string>& args, const std::string& dri
     }
 }
 
-// where clauses for geometry families
-static const char* WHERE_POINT       = "OGR_GEOMETRY='POINT'";
-static const char* WHERE_MULTIPOINT  = "OGR_GEOMETRY='MULTIPOINT'";
-static const char* WHERE_LINES       = "OGR_GEOMETRY='LINESTRING' OR OGR_GEOMETRY='MULTILINESTRING'";
-static const char* WHERE_POLYS       = "OGR_GEOMETRY='POLYGON' OR OGR_GEOMETRY='MULTIPOLYGON'";
+// where clauses for geometry families (including 3D variants for GPX and other formats)
+static const char* WHERE_POINT       = "OGR_GEOMETRY IN ('POINT', 'POINT Z', 'POINT M', 'POINT ZM', 'POINT25D')";
+static const char* WHERE_MULTIPOINT  = "OGR_GEOMETRY IN ('MULTIPOINT', 'MULTIPOINT Z', 'MULTIPOINT M', 'MULTIPOINT ZM', 'MULTIPOINT25D')";
+static const char* WHERE_LINES       = "OGR_GEOMETRY IN ('LINESTRING', 'LINESTRING Z', 'LINESTRING M', 'LINESTRING ZM', 'LINESTRING25D', 'MULTILINESTRING', 'MULTILINESTRING Z', 'MULTILINESTRING M', 'MULTILINESTRING ZM', 'MULTILINESTRING25D')";
+static const char* WHERE_POLYS       = "OGR_GEOMETRY IN ('POLYGON', 'POLYGON Z', 'POLYGON M', 'POLYGON ZM', 'POLYGON25D', 'MULTIPOLYGON', 'MULTIPOLYGON Z', 'MULTIPOLYGON M', 'MULTIPOLYGON ZM', 'MULTIPOLYGON25D')";
 
 // optional single-family where for non-SHP outputs (user-provided filter)
 static std::string whereFromFilter(const std::string& filter) {
@@ -986,6 +986,13 @@ std::vector<uint8_t> Native::convertVector(
                 if (!L) continue;
                 const std::string srcLayerName = L->GetName();
 
+                // Skip GPX auxiliary layers (*_points) - these are just helper layers
+                // The actual geometries are in tracks/routes/waypoints layers
+                std::string lowerLayerName = toLower(srcLayerName);
+                if (lowerLayerName == "track_points" || lowerLayerName == "route_points") {
+                    continue;
+                }
+
                 // We split into up to 4 shapefiles per layer, only if counts > 0
                 struct Part { const char* where; const char* suffix; bool promoteToMulti; };
                 const Part parts[] = {
@@ -1007,7 +1014,8 @@ std::vector<uint8_t> Native::convertVector(
                         "-f", "ESRI Shapefile",
                         "-where", p.where,
                         "-nln", baseName,
-                        "-dim", keepZ ? "XYZ" : "XY"
+                        "-dim", keepZ ? "XYZ" : "XY",
+                        srcLayerName  // Specify which layer to convert
                     };
 
                     // Explode collections
